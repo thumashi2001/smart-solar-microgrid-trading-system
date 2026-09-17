@@ -1,0 +1,27 @@
+# ===== .NET / C# API =====
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# ===== Node / React =====
+node_modules/
+web/build/
+web/dist/
+.env
+npm-debug.log*
+
+# ===== Android / Kotlin =====
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+build/
+captures/
+android/app/release/
+
+# ===== General =====
+*.log
+.vscode/
