@@ -26,3 +26,4 @@ android/app/release/
 *.log
 .vscode/
 api/MicrogridApi/appsettings.json
+api/MicrogridApi/appsettings.Development.json
