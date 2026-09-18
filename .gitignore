@@ -25,3 +25,4 @@ android/app/release/
 # ===== General =====
 *.log
 .vscode/
+api/MicrogridApi/appsettings.json

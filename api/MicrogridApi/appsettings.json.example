@@ -1,0 +1,13 @@
+{
+  "MongoDbSettings": {
+    "ConnectionString": "mongodb+srv://thumashi_db_user:cxvC0sBaUpOKg51v@microgrid-cluster.vlwvxkt.mongodb.net/?appName=microgrid-cluster",
+    "DatabaseName": "microgrid_db"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "AllowedHosts": "*"
+}
