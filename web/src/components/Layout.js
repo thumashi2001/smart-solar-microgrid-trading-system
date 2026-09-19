@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
 const sidebarBg = "#0B3B2E";
-const accent = "#1E7A4D";
+
 
 function Layout({ children }) {
   const navigate = useNavigate();
