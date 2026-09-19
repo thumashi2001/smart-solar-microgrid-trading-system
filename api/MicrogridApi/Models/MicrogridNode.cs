@@ -21,7 +21,7 @@ public class MicrogridNode
 
     public double Longitude { get; set; }
 
-    public double CapacityKwh { get; set; }
+    public double CapacityKWh { get; set; }
 
     public int BatterySlots { get; set; }
 
