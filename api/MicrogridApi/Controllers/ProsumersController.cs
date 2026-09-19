@@ -35,6 +35,37 @@ public class ProsumersController : ControllerBase
         return Ok(newProsumer);
     }
 
+    [HttpPut("{nic}")]
+    public async Task<IActionResult> Update(string nic, Prosumer updatedProsumer)
+    {
+        var existing = await _db.Prosumers.Find(p => p.Nic == nic).FirstOrDefaultAsync();
+        if (existing == null) return NotFound();
+
+        if (!string.IsNullOrEmpty(updatedProsumer.PasswordHash))
+        {
+            updatedProsumer.PasswordHash = BCrypt.Net.BCrypt.HashPassword(updatedProsumer.PasswordHash);
+        }
+        else
+        {
+            updatedProsumer.PasswordHash = existing.PasswordHash;
+        }
+
+        updatedProsumer.Id = existing.Id;
+        updatedProsumer.Nic = nic;
+        updatedProsumer.CreatedAt = existing.CreatedAt;
+
+        await _db.Prosumers.ReplaceOneAsync(p => p.Nic == nic, updatedProsumer);
+        return Ok(updatedProsumer);
+    }
+
+    [HttpDelete("{nic}")]
+    public async Task<IActionResult> Delete(string nic)
+    {
+        var result = await _db.Prosumers.DeleteOneAsync(p => p.Nic == nic);
+        if (result.DeletedCount == 0) return NotFound();
+        return Ok(new { message = "Prosumer deleted." });
+    }
+
     [HttpPatch("{nic}/deactivate")]
     public async Task<IActionResult> Deactivate(string nic)
     {

@@ -31,6 +31,36 @@ public class UsersController : ControllerBase
         return Ok(newUser);
     }
 
+    [HttpPut("{id}")]
+    public async Task<IActionResult> Update(string id, User updatedUser)
+    {
+        var existing = await _db.Users.Find(u => u.Id == id).FirstOrDefaultAsync();
+        if (existing == null) return NotFound();
+
+        if (!string.IsNullOrEmpty(updatedUser.PasswordHash))
+        {
+            updatedUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword(updatedUser.PasswordHash);
+        }
+        else
+        {
+            updatedUser.PasswordHash = existing.PasswordHash;
+        }
+
+        updatedUser.Id = id;
+        updatedUser.CreatedAt = existing.CreatedAt;
+
+        await _db.Users.ReplaceOneAsync(u => u.Id == id, updatedUser);
+        return Ok(updatedUser);
+    }
+
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> Delete(string id)
+    {
+        var result = await _db.Users.DeleteOneAsync(u => u.Id == id);
+        if (result.DeletedCount == 0) return NotFound();
+        return Ok(new { message = "User deleted." });
+    }
+
     [HttpPatch("{id}/deactivate")]
     public async Task<IActionResult> Deactivate(string id)
     {
