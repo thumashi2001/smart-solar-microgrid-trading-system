@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "../api";
 
 function MicrogridNodes() {
+  const navigate = useNavigate();
+
   const [nodes, setNodes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -19,7 +22,7 @@ function MicrogridNodes() {
 
       const response = await api.get("/microgridnodes");
 
-      // Supports either:
+      // Supports:
       // [ ... ]
       // or { data: [ ... ] }
       const nodeData = Array.isArray(response.data)
@@ -52,7 +55,7 @@ function MicrogridNodes() {
   }, [fetchNodes]);
 
   // =========================
-  // Summary values
+  // Summary Values
   // =========================
   const totalNodes = nodes.length;
 
@@ -87,7 +90,7 @@ function MicrogridNodes() {
   }, [nodes, searchTerm, statusFilter]);
 
   // =========================
-  // UI Helpers
+  // Status Style
   // =========================
   const getStatusStyle = (status) => {
     const normalizedStatus = String(status || "").toLowerCase();
@@ -105,6 +108,9 @@ function MicrogridNodes() {
     };
   };
 
+  // =========================
+  // Common Styles
+  // =========================
   const cardStyle = {
     background: "#fff",
     border: "1px solid #E6E2DB",
@@ -162,8 +168,8 @@ function MicrogridNodes() {
               fontSize: "14px",
             }}
           >
-            Manage solar microgrid nodes, capacity, battery slots and
-            operating schedules.
+            Manage solar microgrid nodes, capacity, battery slots and operating
+            schedules.
           </p>
         </div>
 
@@ -179,9 +185,7 @@ function MicrogridNodes() {
             fontWeight: 600,
             cursor: "pointer",
           }}
-          onClick={() => {
-            alert("Add Microgrid Node form will be added next.");
-          }}
+          onClick={() => navigate("/microgrid-nodes/add")}
         >
           + Add Microgrid Node
         </button>
@@ -198,6 +202,7 @@ function MicrogridNodes() {
           marginBottom: "26px",
         }}
       >
+        {/* Total Nodes */}
         <div style={{ ...cardStyle, background: "#EAF1F8" }}>
           <div
             style={{
@@ -219,6 +224,7 @@ function MicrogridNodes() {
           </div>
         </div>
 
+        {/* Active Nodes */}
         <div style={{ ...cardStyle, background: "#E5F4EA" }}>
           <div
             style={{
@@ -241,6 +247,7 @@ function MicrogridNodes() {
           </div>
         </div>
 
+        {/* Inactive Nodes */}
         <div style={{ ...cardStyle, background: "#FBE9E7" }}>
           <div
             style={{
@@ -303,7 +310,7 @@ function MicrogridNodes() {
       )}
 
       {/* =========================
-          Search / Filters
+          Search / Filter
       ========================== */}
       <div
         style={{
@@ -373,7 +380,7 @@ function MicrogridNodes() {
       </div>
 
       {/* =========================
-          Table
+          Microgrid Node Table
       ========================== */}
       <div
         style={{
@@ -439,18 +446,22 @@ function MicrogridNodes() {
                     borderTop: "1px solid #ECE9E3",
                   }}
                 >
+                  {/* Node ID */}
                   <td style={tableCellStyle}>
                     <strong>{node.nodeId || "-"}</strong>
                   </td>
 
+                  {/* Node Name */}
                   <td style={tableCellStyle}>
                     {node.nodeName || "-"}
                   </td>
 
+                  {/* Location */}
                   <td style={tableCellStyle}>
                     {node.location || "-"}
                   </td>
 
+                  {/* Capacity */}
                   <td style={tableCellStyle}>
                     {node.capacityKWh !== undefined &&
                     node.capacityKWh !== null
@@ -458,14 +469,17 @@ function MicrogridNodes() {
                       : "-"}
                   </td>
 
+                  {/* Battery Slots */}
                   <td style={tableCellStyle}>
                     {node.batterySlots ?? "-"}
                   </td>
 
+                  {/* Schedule */}
                   <td style={tableCellStyle}>
                     {node.schedule || "-"}
                   </td>
 
+                  {/* Status */}
                   <td style={tableCellStyle}>
                     <span
                       style={{
@@ -481,6 +495,7 @@ function MicrogridNodes() {
                     </span>
                   </td>
 
+                  {/* Actions */}
                   <td style={tableCellStyle}>
                     <div
                       style={{
@@ -489,36 +504,34 @@ function MicrogridNodes() {
                         whiteSpace: "nowrap",
                       }}
                     >
+                      {/* View */}
                       <button
                         type="button"
                         style={actionButtonStyle}
                         onClick={() => {
                           alert(
-                            `View node: ${
-                              node.nodeName || node.nodeId
-                            }`
+                            `View node: ${node.nodeName || node.nodeId}`
                           );
                         }}
                       >
                         View
                       </button>
 
+                      {/* Edit */}
                       <button
                         type="button"
                         style={actionButtonStyle}
                         onClick={() => {
                           alert(
-                            `Edit node: ${
-                              node.nodeName || node.nodeId
-                            }`
+                            `Edit node: ${node.nodeName || node.nodeId}`
                           );
                         }}
                       >
                         Edit
                       </button>
 
-                      {String(node.status || "").toLowerCase() ===
-                      "active" ? (
+                      {/* Activate / Deactivate */}
+                      {String(node.status || "").toLowerCase() === "active" ? (
                         <button
                           type="button"
                           style={{
@@ -564,6 +577,9 @@ function MicrogridNodes() {
         )}
       </div>
 
+      {/* =========================
+          Table Footer
+      ========================== */}
       {!loading && !error && (
         <div
           style={{
@@ -579,6 +595,10 @@ function MicrogridNodes() {
     </div>
   );
 }
+
+// =========================
+// Table Styles
+// =========================
 
 const tableHeaderStyle = {
   padding: "14px 16px",

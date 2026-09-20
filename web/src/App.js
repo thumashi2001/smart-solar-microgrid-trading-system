@@ -4,6 +4,7 @@ import Login from "./pages/Login";
 import Users from "./pages/Users";
 import Prosumers from "./pages/Prosumers";
 import MicrogridNodes from "./pages/MicrogridNodes";
+import AddMicrogridNode from "./pages/AddMicrogridNode";
 
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -50,6 +51,17 @@ function App() {
             </ProtectedRoute>
           }
         />
+
+        <Route
+  path="/microgrid-nodes/add"
+  element={
+    <ProtectedRoute allowedRoles={["Backoffice"]}>
+      <Layout>
+        <AddMicrogridNode />
+      </Layout>
+    </ProtectedRoute>
+  }
+/>
       </Routes>
     </BrowserRouter>
   );
