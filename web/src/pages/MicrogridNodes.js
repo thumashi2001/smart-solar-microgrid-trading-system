@@ -12,9 +12,9 @@ function MicrogridNodes() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  // =========================
+  // =====================================================
   // Load Microgrid Nodes
-  // =========================
+  // =====================================================
   const fetchNodes = useCallback(async () => {
     try {
       setLoading(true);
@@ -54,9 +54,9 @@ function MicrogridNodes() {
     fetchNodes();
   }, [fetchNodes]);
 
-  // =========================
+  // =====================================================
   // Summary Values
-  // =========================
+  // =====================================================
   const totalNodes = nodes.length;
 
   const activeNodes = nodes.filter(
@@ -67,9 +67,9 @@ function MicrogridNodes() {
     (node) => String(node.status || "").toLowerCase() === "inactive"
   ).length;
 
-  // =========================
+  // =====================================================
   // Search + Filter
-  // =========================
+  // =====================================================
   const filteredNodes = useMemo(() => {
     const search = searchTerm.trim().toLowerCase();
 
@@ -89,9 +89,9 @@ function MicrogridNodes() {
     });
   }, [nodes, searchTerm, statusFilter]);
 
-  // =========================
+  // =====================================================
   // Status Style
-  // =========================
+  // =====================================================
   const getStatusStyle = (status) => {
     const normalizedStatus = String(status || "").toLowerCase();
 
@@ -108,9 +108,51 @@ function MicrogridNodes() {
     };
   };
 
-  // =========================
+  // =====================================================
+  // View Node
+  // =====================================================
+  const handleView = (node) => {
+    const nodeIdentifier = node.id || node._id || node.nodeId;
+
+    if (!nodeIdentifier) {
+      alert("Unable to open node details because the node ID is missing.");
+      return;
+    }
+
+    navigate(`/microgrid-nodes/${encodeURIComponent(nodeIdentifier)}`);
+  };
+
+  // =====================================================
+  // Edit Node
+  // =====================================================
+  const handleEdit = (node) => {
+    const nodeIdentifier = node.id || node._id || node.nodeId;
+
+    if (!nodeIdentifier) {
+      alert("Unable to edit this node because the node ID is missing.");
+      return;
+    }
+
+    // We will build the Edit Microgrid Node page next.
+    alert(`Edit node: ${node.nodeName || node.nodeId}`);
+  };
+
+  // =====================================================
+  // Activate / Deactivate
+  // =====================================================
+  const handleStatusChange = (node) => {
+    const currentStatus = String(node.status || "").toLowerCase();
+
+    if (currentStatus === "active") {
+      alert(`Deactivate node: ${node.nodeName || node.nodeId}`);
+    } else {
+      alert(`Reactivate node: ${node.nodeName || node.nodeId}`);
+    }
+  };
+
+  // =====================================================
   // Common Styles
-  // =========================
+  // =====================================================
   const cardStyle = {
     background: "#fff",
     border: "1px solid #E6E2DB",
@@ -138,9 +180,9 @@ function MicrogridNodes() {
         color: "#1C1F1E",
       }}
     >
-      {/* =========================
+      {/* =================================================
           Header
-      ========================== */}
+      ================================================== */}
       <div
         style={{
           display: "flex",
@@ -191,9 +233,9 @@ function MicrogridNodes() {
         </button>
       </div>
 
-      {/* =========================
+      {/* =================================================
           Summary Cards
-      ========================== */}
+      ================================================== */}
       <div
         style={{
           display: "flex",
@@ -203,7 +245,12 @@ function MicrogridNodes() {
         }}
       >
         {/* Total Nodes */}
-        <div style={{ ...cardStyle, background: "#EAF1F8" }}>
+        <div
+          style={{
+            ...cardStyle,
+            background: "#EAF1F8",
+          }}
+        >
           <div
             style={{
               fontSize: "13px",
@@ -225,7 +272,12 @@ function MicrogridNodes() {
         </div>
 
         {/* Active Nodes */}
-        <div style={{ ...cardStyle, background: "#E5F4EA" }}>
+        <div
+          style={{
+            ...cardStyle,
+            background: "#E5F4EA",
+          }}
+        >
           <div
             style={{
               fontSize: "13px",
@@ -248,7 +300,12 @@ function MicrogridNodes() {
         </div>
 
         {/* Inactive Nodes */}
-        <div style={{ ...cardStyle, background: "#FBE9E7" }}>
+        <div
+          style={{
+            ...cardStyle,
+            background: "#FBE9E7",
+          }}
+        >
           <div
             style={{
               fontSize: "13px",
@@ -271,9 +328,9 @@ function MicrogridNodes() {
         </div>
       </div>
 
-      {/* =========================
+      {/* =================================================
           Error Message
-      ========================== */}
+      ================================================== */}
       {error && (
         <div
           style={{
@@ -309,9 +366,9 @@ function MicrogridNodes() {
         </div>
       )}
 
-      {/* =========================
-          Search / Filter
-      ========================== */}
+      {/* =================================================
+          Search + Filter
+      ================================================== */}
       <div
         style={{
           display: "flex",
@@ -379,9 +436,9 @@ function MicrogridNodes() {
         </div>
       </div>
 
-      {/* =========================
+      {/* =================================================
           Microgrid Node Table
-      ========================== */}
+      ================================================== */}
       <div
         style={{
           background: "#fff",
@@ -452,14 +509,10 @@ function MicrogridNodes() {
                   </td>
 
                   {/* Node Name */}
-                  <td style={tableCellStyle}>
-                    {node.nodeName || "-"}
-                  </td>
+                  <td style={tableCellStyle}>{node.nodeName || "-"}</td>
 
                   {/* Location */}
-                  <td style={tableCellStyle}>
-                    {node.location || "-"}
-                  </td>
+                  <td style={tableCellStyle}>{node.location || "-"}</td>
 
                   {/* Capacity */}
                   <td style={tableCellStyle}>
@@ -475,9 +528,7 @@ function MicrogridNodes() {
                   </td>
 
                   {/* Schedule */}
-                  <td style={tableCellStyle}>
-                    {node.schedule || "-"}
-                  </td>
+                  <td style={tableCellStyle}>{node.schedule || "-"}</td>
 
                   {/* Status */}
                   <td style={tableCellStyle}>
@@ -508,11 +559,7 @@ function MicrogridNodes() {
                       <button
                         type="button"
                         style={actionButtonStyle}
-                        onClick={() => {
-                          alert(
-                            `View node: ${node.nodeName || node.nodeId}`
-                          );
-                        }}
+                        onClick={() => handleView(node)}
                       >
                         View
                       </button>
@@ -521,11 +568,7 @@ function MicrogridNodes() {
                       <button
                         type="button"
                         style={actionButtonStyle}
-                        onClick={() => {
-                          alert(
-                            `Edit node: ${node.nodeName || node.nodeId}`
-                          );
-                        }}
+                        onClick={() => handleEdit(node)}
                       >
                         Edit
                       </button>
@@ -539,13 +582,7 @@ function MicrogridNodes() {
                             color: "#B42318",
                             borderColor: "#E8B5B0",
                           }}
-                          onClick={() => {
-                            alert(
-                              `Deactivate node: ${
-                                node.nodeName || node.nodeId
-                              }`
-                            );
-                          }}
+                          onClick={() => handleStatusChange(node)}
                         >
                           Deactivate
                         </button>
@@ -557,13 +594,7 @@ function MicrogridNodes() {
                             color: "#167345",
                             borderColor: "#A9D7BC",
                           }}
-                          onClick={() => {
-                            alert(
-                              `Reactivate node: ${
-                                node.nodeName || node.nodeId
-                              }`
-                            );
-                          }}
+                          onClick={() => handleStatusChange(node)}
                         >
                           Reactivate
                         </button>
@@ -577,9 +608,9 @@ function MicrogridNodes() {
         )}
       </div>
 
-      {/* =========================
+      {/* =================================================
           Table Footer
-      ========================== */}
+      ================================================== */}
       {!loading && !error && (
         <div
           style={{
@@ -596,9 +627,9 @@ function MicrogridNodes() {
   );
 }
 
-// =========================
+// =====================================================
 // Table Styles
-// =========================
+// =====================================================
 
 const tableHeaderStyle = {
   padding: "14px 16px",
