@@ -23,7 +23,7 @@ function Login() {
       localStorage.setItem("role", res.data.role);
       localStorage.setItem("fullName", res.data.fullName);
 
-      if (res.data.role === "Backoffice") navigate("/users");
+      if (res.data.role === "Backoffice") navigate("/dashboard");
       else if (res.data.role === "GridOperator") navigate("/operator");
     } catch (err) {
       setError("Invalid email/NIC or password.");
