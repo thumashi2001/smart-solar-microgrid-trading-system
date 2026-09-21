@@ -1,4 +1,8 @@
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import {
+  Link,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 
 const sidebarBg = "#0B3B2E";
 
@@ -6,20 +10,22 @@ function Layout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const fullName = localStorage.getItem("fullName") || "User";
-  const role = localStorage.getItem("role") || "";
+  const fullName =
+    localStorage.getItem("fullName") || "User";
 
-  // Logout user and return to login page
+  const role =
+    localStorage.getItem("role") || "";
+
   const handleLogout = () => {
     localStorage.clear();
     navigate("/");
   };
 
-  // Reusable sidebar navigation item
   const navItem = (to, label, icon) => {
     const active =
       location.pathname === to ||
-      (to !== "/" && location.pathname.startsWith(`${to}/`));
+      (to !== "/" &&
+        location.pathname.startsWith(`${to}/`));
 
     return (
       <Link
@@ -41,7 +47,10 @@ function Layout({ children }) {
           transition: "background 0.2s ease",
         }}
       >
-        <span style={{ fontSize: "16px" }}>{icon}</span>
+        <span style={{ fontSize: "16px" }}>
+          {icon}
+        </span>
+
         {label}
       </Link>
     );
@@ -52,12 +61,11 @@ function Layout({ children }) {
       style={{
         display: "flex",
         minHeight: "100vh",
-        fontFamily: "'Segoe UI', Arial, sans-serif",
+        fontFamily:
+          "'Segoe UI', Arial, sans-serif",
       }}
     >
-      {/* =========================
-          LEFT SIDEBAR
-      ========================== */}
+      {/* LEFT SIDEBAR */}
       <div
         style={{
           width: "260px",
@@ -67,7 +75,7 @@ function Layout({ children }) {
           flexShrink: 0,
         }}
       >
-        {/* Logo / Application Name */}
+        {/* LOGO */}
         <div
           style={{
             padding: "24px 20px",
@@ -76,7 +84,9 @@ function Layout({ children }) {
             gap: "10px",
           }}
         >
-          <span style={{ fontSize: "30px" }}>☀️</span>
+          <span style={{ fontSize: "30px" }}>
+            ☀️
+          </span>
 
           <div>
             <div
@@ -92,7 +102,8 @@ function Layout({ children }) {
 
             <div
               style={{
-                color: "rgba(255,255,255,0.6)",
+                color:
+                  "rgba(255,255,255,0.6)",
                 fontSize: "11px",
               }}
             >
@@ -101,20 +112,31 @@ function Layout({ children }) {
           </div>
         </div>
 
-        {/* =========================
-            NAVIGATION
-        ========================== */}
+        {/* NAVIGATION */}
         <div
           style={{
             marginTop: "16px",
             flexGrow: 1,
           }}
         >
-          {/* Existing Thumashi sections */}
-          {navItem("/users", "Users", "👤")}
-          {navItem("/prosumers", "Prosumers", "🔌")}
+          {navItem(
+            "/dashboard",
+            "Dashboard",
+            "📊"
+          )}
 
-          {/* Nethasa - Microgrid Node Management */}
+          {navItem(
+            "/users",
+            "Users",
+            "👤"
+          )}
+
+          {navItem(
+            "/prosumers",
+            "Prosumers",
+            "🔌"
+          )}
+
           {navItem(
             "/microgrid-nodes",
             "Microgrid Nodes",
@@ -122,21 +144,22 @@ function Layout({ children }) {
           )}
         </div>
 
-        {/* =========================
-            LOGOUT
-        ========================== */}
+        {/* LOGOUT */}
         <div
           style={{
             padding: "20px",
-            borderTop: "1px solid rgba(255,255,255,0.12)",
+            borderTop:
+              "1px solid rgba(255,255,255,0.12)",
           }}
         >
           <button
+            type="button"
             onClick={handleLogout}
             style={{
               width: "100%",
               background: "transparent",
-              border: "1px solid rgba(255,255,255,0.35)",
+              border:
+                "1px solid rgba(255,255,255,0.35)",
               color: "#fff",
               borderRadius: "8px",
               padding: "10px",
@@ -149,15 +172,15 @@ function Layout({ children }) {
               gap: "8px",
             }}
           >
-            <span style={{ fontSize: "16px" }}>🚪</span>
+            <span style={{ fontSize: "16px" }}>
+              🚪
+            </span>
             Logout
           </button>
         </div>
       </div>
 
-      {/* =========================
-          MAIN CONTENT AREA
-      ========================== */}
+      {/* MAIN AREA */}
       <div
         style={{
           flexGrow: 1,
@@ -165,13 +188,12 @@ function Layout({ children }) {
           minWidth: 0,
         }}
       >
-        {/* =========================
-            TOP BAR
-        ========================== */}
+        {/* TOP BAR */}
         <div
           style={{
             background: "#fff",
-            borderBottom: "1px solid #E4E1DA",
+            borderBottom:
+              "1px solid #E4E1DA",
             padding: "16px 32px",
             display: "flex",
             justifyContent: "flex-end",
@@ -179,7 +201,6 @@ function Layout({ children }) {
             gap: "12px",
           }}
         >
-          {/* Logged-in User Information */}
           <div style={{ textAlign: "right" }}>
             <div
               style={{
@@ -201,7 +222,6 @@ function Layout({ children }) {
             </div>
           </div>
 
-          {/* User Avatar */}
           <div
             style={{
               width: "38px",
@@ -218,13 +238,13 @@ function Layout({ children }) {
               border: "2px solid #E4E1DA",
             }}
           >
-            {fullName.charAt(0).toUpperCase()}
+            {fullName
+              .charAt(0)
+              .toUpperCase()}
           </div>
         </div>
 
-        {/* =========================
-            PAGE CONTENT
-        ========================== */}
+        {/* PAGE CONTENT */}
         <div>{children}</div>
       </div>
     </div>

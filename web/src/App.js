@@ -7,6 +7,7 @@ import MicrogridNodes from "./pages/MicrogridNodes";
 import AddMicrogridNode from "./pages/AddMicrogridNode";
 import MicrogridNodeDetails from "./pages/MicrogridNodeDetails";
 import EditMicrogridNode from "./pages/EditMicrogridNode";
+import BackofficeDashboard from "./pages/BackofficeDashboard";
 
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -81,6 +82,17 @@ function App() {
     <ProtectedRoute allowedRoles={["Backoffice"]}>
       <Layout>
         <AddMicrogridNode />
+      </Layout>
+    </ProtectedRoute>
+  }
+/>
+
+     <Route
+  path="/dashboard"
+  element={
+    <ProtectedRoute allowedRoles={["Backoffice"]}>
+      <Layout>
+        <BackofficeDashboard />
       </Layout>
     </ProtectedRoute>
   }
