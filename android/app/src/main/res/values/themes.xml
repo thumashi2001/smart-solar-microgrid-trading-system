@@ -19,4 +19,7 @@
         <item name="strokeColor">@color/primary_green</item>
         <item name="android:textColor">@color/primary_green</item>
     </style>
+
+    <!-- Thumashi Compose MainActivity window theme -->
+    <style name="Theme.MicrogridApp" parent="android:Theme.Material.Light.NoActionBar" />
 </resources>

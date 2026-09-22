@@ -11,6 +11,7 @@ data class LoginResponse(
     @SerializedName("token") val token: String,
     @SerializedName("role") val role: String,
     @SerializedName("fullName") val fullName: String,
+    @SerializedName("nic") val nic: String? = null,
 )
 
 data class VerifyTransferRequest(

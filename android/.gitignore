@@ -8,3 +8,5 @@ captures/
 app/release/
 *.apk
 *.aab
+.externalNativeBuild
+.cxx
