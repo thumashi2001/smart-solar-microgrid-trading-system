@@ -18,31 +18,37 @@ object ApiClient {
 
     val api: ApiService by lazy { retrofit.create(ApiService::class.java) }
 
+    val plainOkHttpClient: OkHttpClient by lazy { sharedOkHttpClient(sessionManager = null) }
+
     private val retrofit: Retrofit by lazy {
         Retrofit.Builder()
-            .baseUrl(normalizeBaseUrl(BuildConfig.API_BASE_URL))
-            .client(okHttpClient)
+            .baseUrl(ApiUrlConfig.primary())
+            .client(sharedOkHttpClient(sessionManager))
             .addConverterFactory(GsonConverterFactory.create())
             .build()
     }
 
-    private val okHttpClient: OkHttpClient by lazy {
+    fun sharedOkHttpClient(sessionManager: SessionManager? = null): OkHttpClient {
+        // BASIC avoids dumping Authorization headers / JWT / passwords in logcat.
         val logging = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) {
-                HttpLoggingInterceptor.Level.BODY
+                HttpLoggingInterceptor.Level.BASIC
             } else {
                 HttpLoggingInterceptor.Level.NONE
             }
         }
-        OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .addInterceptor(AuthInterceptor(sessionManager))
-            .addInterceptor(logging)
-            .build()
-    }
 
-    private fun normalizeBaseUrl(url: String): String {
-        return if (url.endsWith("/")) url else "$url/"
+        val builder = OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(20, TimeUnit.SECONDS)
+            .writeTimeout(20, TimeUnit.SECONDS)
+            .addInterceptor(HostFallbackInterceptor())
+
+        if (sessionManager != null) {
+            builder.addInterceptor(AuthInterceptor(sessionManager))
+        }
+
+        builder.addInterceptor(logging)
+        return builder.build()
     }
 }

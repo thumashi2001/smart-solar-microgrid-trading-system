@@ -33,6 +33,8 @@ fun ProfileScreen(
     onNotifications: () -> Unit,
     onHelpSupport: () -> Unit,
     onAbout: () -> Unit,
+    onReservationQr: () -> Unit = {},
+    onStationsMap: () -> Unit = {},
     onLogout: () -> Unit
 ) {
     var photoUri by remember { mutableStateOf<Uri?>(null) }
@@ -85,6 +87,8 @@ fun ProfileScreen(
             Column {
                 ProfileMenuItem(Icons.Filled.Person, "My Profile", onMyProfile)
                 ProfileMenuItem(Icons.Filled.Lock, "Change Password", onChangePassword)
+                ProfileMenuItem(Icons.Filled.QrCode, "Reservation QR", onReservationQr)
+                ProfileMenuItem(Icons.Filled.Place, "Stations map", onStationsMap)
                 ProfileMenuItem(Icons.Filled.Notifications, "Notifications", onNotifications)
                 ProfileMenuItem(Icons.Filled.Info, "Help & Support", onHelpSupport)
                 ProfileMenuItem(Icons.Filled.Info, "About", onAbout)

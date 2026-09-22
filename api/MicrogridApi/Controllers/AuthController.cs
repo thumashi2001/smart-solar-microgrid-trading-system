@@ -69,7 +69,7 @@ public class AuthController : ControllerBase
                 subjectId: prosumer.Nic,
                 role: "Prosumer",
                 fullName: prosumer.FullName,
-                emailOrNic: prosumer.Nic);
+                emailOrNic: string.IsNullOrWhiteSpace(prosumer.Email) ? prosumer.Nic : prosumer.Email);
 
             return Ok(new LoginResponse
             {

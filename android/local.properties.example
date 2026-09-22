@@ -10,3 +10,12 @@ sdk.dir=PATH_TO_ANDROID_SDK
 
 # Google Maps SDK for Android (StationsMapActivity)
 MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
+
+# Primary API for this machine (physical device on your LAN)
+API_BASE_URL=http://192.168.8.101:5148/
+
+# Teammate/dev API URL preserved from origin/dev RetrofitClient
+API_FALLBACK_URL=http://172.20.10.2:5148/
+
+# Android emulator loopback to host machine
+API_EMULATOR_URL=http://10.0.2.2:5148/

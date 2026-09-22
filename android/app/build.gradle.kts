@@ -12,6 +12,13 @@ if (localPropertiesFile.exists()) {
     localPropertiesFile.inputStream().use { localProperties.load(it) }
 }
 val mapsApiKey: String = localProperties.getProperty("MAPS_API_KEY") ?: ""
+val apiBaseUrl: String = localProperties.getProperty("API_BASE_URL")
+    ?: "http://10.0.2.2:5148/"
+// Teammate/dev physical-device URL from origin/dev RetrofitClient (172.20.10.2).
+val apiFallbackUrl: String = localProperties.getProperty("API_FALLBACK_URL")
+    ?: "http://172.20.10.2:5148/"
+val apiEmulatorUrl: String = localProperties.getProperty("API_EMULATOR_URL")
+    ?: "http://10.0.2.2:5148/"
 
 android {
     // Suwani Maps/QR app id retained; Thumashi Compose sources keep package com.microgrid.app.
@@ -27,7 +34,9 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:5148/\"")
+        buildConfigField("String", "API_BASE_URL", "\"${apiBaseUrl.trimEnd('/')}/\"")
+        buildConfigField("String", "API_FALLBACK_URL", "\"${apiFallbackUrl.trimEnd('/')}/\"")
+        buildConfigField("String", "API_EMULATOR_URL", "\"${apiEmulatorUrl.trimEnd('/')}/\"")
 
         manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }

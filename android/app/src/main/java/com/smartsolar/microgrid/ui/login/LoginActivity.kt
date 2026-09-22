@@ -5,13 +5,13 @@ import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
+import com.microgrid.app.MainActivity
 import com.smartsolar.microgrid.R
 import com.smartsolar.microgrid.data.api.ApiClient
 import com.smartsolar.microgrid.data.api.ApiErrorParser
 import com.smartsolar.microgrid.data.api.dto.LoginRequest
 import com.smartsolar.microgrid.databinding.ActivityLoginBinding
 import com.smartsolar.microgrid.ui.operator.OperatorHomeActivity
-import com.smartsolar.microgrid.ui.prosumer.ProsumerQrEntryActivity
 import com.smartsolar.microgrid.util.smartSolarApp
 import com.smartsolar.microgrid.util.toast
 import kotlinx.coroutines.launch
@@ -26,12 +26,22 @@ class LoginActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         binding.signInButton.setOnClickListener { attemptLogin() }
+        binding.registerButton.setOnClickListener {
+            startActivity(
+                Intent(this, MainActivity::class.java).apply {
+                    putExtra(MainActivity.EXTRA_START_REGISTER, true)
+                },
+            )
+        }
 
         lifecycleScope.launch {
             val session = smartSolarApp.sessionManager.getSession()
             when (session?.role) {
                 GRID_OPERATOR_ROLE -> openOperatorHome()
-                PROSUMER_ROLE -> openProsumerQrEntry()
+                PROSUMER_ROLE -> openProsumerHub(
+                    fullName = session.fullName,
+                    nic = session.identifier,
+                )
             }
         }
     }
@@ -57,16 +67,17 @@ class LoginActivity : AppCompatActivity() {
                     toast(getString(R.string.error_operator_only))
                     return@launch
                 }
+                val nicOrId = body.nic?.takeIf { it.isNotBlank() } ?: identifier
                 smartSolarApp.sessionManager.saveSession(
                     token = body.token,
                     role = body.role,
                     fullName = body.fullName,
-                    identifier = identifier,
+                    identifier = nicOrId,
                 )
                 if (body.role == GRID_OPERATOR_ROLE) {
                     openOperatorHome()
                 } else {
-                    openProsumerQrEntry()
+                    openProsumerHub(fullName = body.fullName, nic = nicOrId)
                 }
             } catch (_: Exception) {
                 toast(getString(R.string.error_network))
@@ -78,6 +89,7 @@ class LoginActivity : AppCompatActivity() {
 
     private fun setLoading(loading: Boolean) {
         binding.signInButton.isEnabled = !loading
+        binding.registerButton.isEnabled = !loading
         binding.progressBar.isVisible = loading
     }
 
@@ -86,8 +98,14 @@ class LoginActivity : AppCompatActivity() {
         finish()
     }
 
-    private fun openProsumerQrEntry() {
-        startActivity(Intent(this, ProsumerQrEntryActivity::class.java))
+    private fun openProsumerHub(fullName: String, nic: String) {
+        startActivity(
+            Intent(this, MainActivity::class.java).apply {
+                putExtra(MainActivity.EXTRA_OPEN_PROFILE, true)
+                putExtra(MainActivity.EXTRA_FULL_NAME, fullName)
+                putExtra(MainActivity.EXTRA_NIC, nic)
+            },
+        )
         finish()
     }
 
