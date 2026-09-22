@@ -83,4 +83,19 @@ public class ProsumersController : ControllerBase
         if (result.MatchedCount == 0) return NotFound();
         return Ok(new { message = "Prosumer reactivated." });
     }
+
+    public class ChangePasswordRequest
+    {
+        public string NewPassword { get; set; } = "";
+    }
+
+    [HttpPatch("{nic}/change-password")]
+    public async Task<IActionResult> ChangePassword(string nic, ChangePasswordRequest request)
+    {
+        var hashed = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+        var update = Builders<Prosumer>.Update.Set(p => p.PasswordHash, hashed);
+        var result = await _db.Prosumers.UpdateOneAsync(p => p.Nic == nic, update);
+        if (result.MatchedCount == 0) return NotFound();
+        return Ok(new { message = "Password changed." });
+    }
 }

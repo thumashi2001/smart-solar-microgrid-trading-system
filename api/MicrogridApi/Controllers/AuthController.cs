@@ -39,7 +39,7 @@ public class AuthController : ControllerBase
             });
         }
 
-        // Otherwise, try matching a Prosumer by NIC & Email 
+        // Otherwise, try matching a Prosumer by NIC & Email
         var prosumer = await _db.Prosumers.Find(p => p.Nic == request.Identifier || p.Email == request.Identifier).FirstOrDefaultAsync();
         if (prosumer != null)
         {
@@ -55,7 +55,8 @@ public class AuthController : ControllerBase
             {
                 Token = token,
                 Role = "Prosumer",
-                FullName = prosumer.FullName
+                FullName = prosumer.FullName,
+                Nic = prosumer.Nic
             });
         }
 
