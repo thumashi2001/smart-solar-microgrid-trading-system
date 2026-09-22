@@ -12,7 +12,11 @@ public class MongoDbContext
 
     public MongoDbContext(IOptions<MongoDbSettings> settings)
     {
-        var mongoSettings = MongoClientSettings.FromConnectionString(settings.Value.ConnectionString);
+        var mongoSettings =
+            MongoClientSettings.FromConnectionString(
+                settings.Value.ConnectionString
+            );
+
         mongoSettings.SslSettings = new SslSettings
         {
             CheckCertificateRevocation = false,
@@ -20,9 +24,18 @@ public class MongoDbContext
         };
 
         var client = new MongoClient(mongoSettings);
-        _database = client.GetDatabase(settings.Value.DatabaseName);
+
+        _database = client.GetDatabase(
+            settings.Value.DatabaseName
+        );
     }
 
-    public IMongoCollection<User> Users => _database.GetCollection<User>("users");
-    public IMongoCollection<Prosumer> Prosumers => _database.GetCollection<Prosumer>("prosumers");
+    public IMongoCollection<User> Users =>
+        _database.GetCollection<User>("users");
+
+    public IMongoCollection<Prosumer> Prosumers =>
+        _database.GetCollection<Prosumer>("prosumers");
+
+    public IMongoCollection<MicrogridNode> MicrogridNodes =>
+        _database.GetCollection<MicrogridNode>("SolarStationInfo");
 }
