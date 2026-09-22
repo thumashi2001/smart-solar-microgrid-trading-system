@@ -1,12 +1,12 @@
 {
   "MongoDbSettings": {
-    "ConnectionString": "YOUR_CONNECTION_STRING_HERE",
-    "DatabaseName": "microgrid_db"
+    "ConnectionString": "mongodb://localhost:27017",
+    "DatabaseName": "microgrid_db_suwani_test"
   },
   "JwtSettings": {
     "Issuer": "MicrogridApi",
     "Audience": "MicrogridClients",
-    "SecretKey": "REPLACE_WITH_A_LONG_RANDOM_SECRET_AT_LEAST_32_CHARS",
+    "SecretKey": "LOCAL_DEV_ONLY_CHANGE_ME_32CHARS_MIN_ABCDEF",
     "ExpiryMinutes": 480
   },
   "Logging": {

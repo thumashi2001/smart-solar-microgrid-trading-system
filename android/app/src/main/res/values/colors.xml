@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="dark_green">#0B3B2E</color>
+    <color name="primary_green">#1E7A4D</color>
+    <color name="primary_green_dark">#155A38</color>
+    <color name="background_cream">#F7F5F1</color>
+    <color name="page_background">#F7F5F1</color>
+    <color name="surface_white">#FFFFFF</color>
+    <color name="white">#FFFFFF</color>
+    <color name="text_primary">#1C1F1E</color>
+    <color name="text_secondary">#6B6862</color>
+    <color name="secondary_text">#6B6862</color>
+    <color name="error_red">#B14A3C</color>
+    <color name="success_green">#2E7D4F</color>
+    <color name="divider">#E4E1DA</color>
+</resources>

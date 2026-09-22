@@ -38,4 +38,12 @@ public class MongoDbContext
 
     public IMongoCollection<MicrogridNode> MicrogridNodes =>
         _database.GetCollection<MicrogridNode>("SolarStationInfo");
+
+    // Shared booking collection name from team plan. Suwani seed writes compatible docs only.
+    public IMongoCollection<EnergyBookingSlot> EnergyBookingSlots =>
+        _database.GetCollection<EnergyBookingSlot>("energyBookingSlots");
+
+    // Shared booking collection name from team plan. Suwani reads/updates for QR/transfer only.
+    public IMongoCollection<EnergyReservation> EnergyReservations =>
+        _database.GetCollection<EnergyReservation>("energyReservation");
 }

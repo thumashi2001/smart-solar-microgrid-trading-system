@@ -1,5 +1,12 @@
+// =============================================================================
+// File: AuthController.cs
+// Description: Login endpoint; now issues validated JWTs (compat LoginRequest/Response).
+// Author: Thumashi (Component 1) — JWT issuance added by Suwani for protected transfers
+// =============================================================================
+
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
+using MicrogridApi.Auth;
 using MicrogridApi.Data;
 using MicrogridApi.Dtos;
 
@@ -10,12 +17,17 @@ namespace MicrogridApi.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly MongoDbContext _db;
+    private readonly TokenService _tokens;
 
-    public AuthController(MongoDbContext db)
+    // Creates the auth controller with MongoDB and JWT token issuance.
+    public AuthController(MongoDbContext db, TokenService tokens)
     {
         _db = db;
+        _tokens = tokens;
     }
 
+    // POST: api/auth/login
+    // Authenticates Backoffice/GridOperator by email or Prosumer by NIC.
     [HttpPost("login")]
     public async Task<IActionResult> Login(LoginRequest request)
     {
@@ -29,7 +41,11 @@ public class AuthController : ControllerBase
             if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
                 return Unauthorized("Invalid credentials.");
 
-            var token = Guid.NewGuid().ToString(); // simple placeholder token for now
+            var token = _tokens.CreateToken(
+                subjectId: user.UserId,
+                role: user.Role,
+                fullName: user.FullName,
+                emailOrNic: user.Email);
 
             return Ok(new LoginResponse
             {
@@ -49,7 +65,11 @@ public class AuthController : ControllerBase
             if (!BCrypt.Net.BCrypt.Verify(request.Password, prosumer.PasswordHash))
                 return Unauthorized("Invalid credentials.");
 
-            var token = Guid.NewGuid().ToString();
+            var token = _tokens.CreateToken(
+                subjectId: prosumer.Nic,
+                role: "Prosumer",
+                fullName: prosumer.FullName,
+                emailOrNic: prosumer.Nic);
 
             return Ok(new LoginResponse
             {

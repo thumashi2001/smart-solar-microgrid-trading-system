@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Smart Solar Microgrid</string>
+
+    <string name="login_title">Sign in</string>
+    <string name="hint_identifier">Email or NIC</string>
+    <string name="hint_password">Password</string>
+    <string name="action_sign_in">Sign in</string>
+    <string name="error_invalid_credentials">Invalid credentials.</string>
+    <string name="error_operator_only">This screen is for Grid Operator or Prosumer accounts.</string>
+    <string name="error_session_expired">Session expired. Please sign in again.</string>
+    <string name="prosumer_qr_title">Show reservation QR</string>
+    <string name="prosumer_qr_help">Enter an approved reservation ID to display its secure QR. Booking screens will open this automatically when integrated.</string>
+    <string name="hint_reservation_id">Reservation ID</string>
+    <string name="show_qr">Show QR code</string>
+    <string name="logout">Log out</string>
+
+    <string name="operator_home_title">Operator home</string>
+    <string name="action_scan_qr">Scan transfer QR</string>
+    <string name="action_stations_map">Nearby stations map</string>
+    <string name="action_logout">Log out</string>
+    <string name="welcome_operator">Welcome, %1$s</string>
+
+    <string name="qr_display_title">Reservation QR</string>
+    <string name="qr_loading">Loading QR code…</string>
+    <string name="qr_error">Could not load QR: %1$s</string>
+    <string name="qr_payload_label">Transaction reference</string>
+
+    <string name="scanner_title">Scan QR code</string>
+    <string name="scanner_hint">Align the QR code within the frame</string>
+    <string name="camera_permission_required">Camera permission is required to scan QR codes.</string>
+    <string name="grant_permission">Grant permission</string>
+
+    <string name="verification_title">Verify transfer</string>
+    <string name="label_reservation_id">Reservation</string>
+    <string name="label_transaction_ref">Reference</string>
+    <string name="label_status">Status</string>
+    <string name="label_station">Station</string>
+    <string name="label_slot">Slot</string>
+    <string name="label_prosumer">Prosumer</string>
+    <string name="action_confirm_complete">Confirm &amp; complete</string>
+    <string name="not_eligible">Not eligible: %1$s</string>
+
+    <string name="transfer_success_title">Transfer completed</string>
+    <string name="transfer_already_title">Already completed</string>
+    <string name="action_done">Done</string>
+    <string name="action_back_home">Back to home</string>
+
+    <string name="map_title">Microgrid stations</string>
+    <string name="map_loading">Loading stations…</string>
+    <string name="map_error">Failed to load stations: %1$s</string>
+    <string name="battery_slots_total">Battery slots (total): %1$d</string>
+    <string name="capacity_kwh">Capacity: %1$.1f kWh</string>
+    <string name="distance_km">Distance: %1$.2f km</string>
+    <string name="location_permission_optional">Location is optional — showing all stations without distance filter.</string>
+    <string name="cached_stations_notice">Showing cached stations (offline).</string>
+
+    <string name="error_network">Network error. Check API URL and connectivity.</string>
+    <string name="error_generic">Something went wrong.</string>
+</resources>

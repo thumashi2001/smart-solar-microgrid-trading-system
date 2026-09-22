@@ -1,0 +1,12 @@
+## Copy this file to `local.properties` (gitignored) and fill in your paths/keys.
+##
+## Windows example:
+## sdk.dir=C\:\\Users\\YourName\\AppData\\Local\\Android\\Sdk
+##
+## macOS / Linux example:
+## sdk.dir=/Users/YourName/Library/Android/sdk
+
+sdk.dir=PATH_TO_ANDROID_SDK
+
+# Google Maps SDK for Android (StationsMapActivity)
+MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
