@@ -39,8 +39,8 @@ public class AuthController : ControllerBase
             });
         }
 
-        // Otherwise, try matching a Prosumer by NIC
-        var prosumer = await _db.Prosumers.Find(p => p.Nic == request.Identifier).FirstOrDefaultAsync();
+        // Otherwise, try matching a Prosumer by NIC & Email 
+        var prosumer = await _db.Prosumers.Find(p => p.Nic == request.Identifier || p.Email == request.Identifier).FirstOrDefaultAsync();
         if (prosumer != null)
         {
             if (prosumer.Status != "active")
