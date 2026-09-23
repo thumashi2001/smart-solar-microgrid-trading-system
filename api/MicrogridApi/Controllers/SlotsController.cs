@@ -30,8 +30,13 @@ public class SlotsController : ControllerBase
             filter &= filterBuilder.Eq(s => s.StationId, stationId);
         }
 
-        if (!string.IsNullOrWhiteSpace(date) && DateTime.TryParse(date, out var parsedDate))
+        if (!string.IsNullOrWhiteSpace(date))
         {
+            if (!DateTime.TryParseExact(date, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var parsedDate))
+            {
+                return BadRequest(new { message = "Invalid date format. Expected YYYY-MM-DD." });
+            }
+
             // Match the exact date portion (ignoring time if stored with time)
             filter &= filterBuilder.Eq(s => s.Date, parsedDate.Date);
         }
@@ -70,14 +75,19 @@ public class SlotsController : ControllerBase
             return BadRequest(new { message = "StationId is required." });
         }
 
+        if (request.Date == default || request.Date == DateTime.MinValue || request.Date.Year <= 1)
+        {
+            return BadRequest(new { message = "Date is required." });
+        }
+
         if (request.Capacity <= 0)
         {
             return BadRequest(new { message = "Capacity must be greater than 0." });
         }
 
-        if (!TimeSpan.TryParse(request.StartTime, out var parsedStartTime) || !TimeSpan.TryParse(request.EndTime, out var parsedEndTime))
+        if (!TryParseStrictTime(request.StartTime, out var parsedStartTime) || !TryParseStrictTime(request.EndTime, out var parsedEndTime))
         {
-            return BadRequest(new { message = "Invalid time format for StartTime or EndTime." });
+            return BadRequest(new { message = "Invalid time format for StartTime or EndTime. Expected format is HH:mm." });
         }
 
         if (parsedEndTime <= parsedStartTime)
@@ -150,10 +160,18 @@ public class SlotsController : ControllerBase
         var newStartTime = existingSlot.StartTime;
         var newEndTime = existingSlot.EndTime;
 
-        if (request.Date.HasValue && request.Date.Value.Date != existingSlot.Date.Date)
+        if (request.Date.HasValue)
         {
-            newDate = request.Date.Value.Date;
-            scheduleChanging = true;
+            if (request.Date.Value == default || request.Date.Value == DateTime.MinValue || request.Date.Value.Year <= 1)
+            {
+                return BadRequest(new { message = "Date is required." });
+            }
+
+            if (request.Date.Value.Date != existingSlot.Date.Date)
+            {
+                newDate = request.Date.Value.Date;
+                scheduleChanging = true;
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(request.StartTime) && request.StartTime != existingSlot.StartTime)
@@ -171,10 +189,10 @@ public class SlotsController : ControllerBase
         if (scheduleChanging)
         {
             // Validate new time formats
-            if (!TimeSpan.TryParse(newStartTime, out var parsedStartTime) || 
-                !TimeSpan.TryParse(newEndTime, out var parsedEndTime))
+            if (!TryParseStrictTime(newStartTime, out var parsedStartTime) || 
+                !TryParseStrictTime(newEndTime, out var parsedEndTime))
             {
-                return BadRequest(new { message = "Invalid time format for StartTime or EndTime." });
+                return BadRequest(new { message = "Invalid time format for StartTime or EndTime. Expected format is HH:mm." });
             }
 
             if (parsedEndTime <= parsedStartTime)
@@ -222,5 +240,21 @@ public class SlotsController : ControllerBase
         existingSlot.UpdatedAt = DateTime.UtcNow;
 
         return Ok(existingSlot);
+    }
+
+    private static bool TryParseStrictTime(string? timeStr, out TimeSpan timeSpan)
+    {
+        timeSpan = default;
+        if (string.IsNullOrWhiteSpace(timeStr))
+            return false;
+
+        if (System.Text.RegularExpressions.Regex.IsMatch(timeStr, @"^([01]\d|2[0-3]):([0-5]\d)$") &&
+            DateTime.TryParseExact(timeStr, "HH:mm", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var dt))
+        {
+            timeSpan = dt.TimeOfDay;
+            return true;
+        }
+
+        return false;
     }
 }

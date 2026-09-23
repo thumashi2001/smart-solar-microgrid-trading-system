@@ -1154,5 +1154,145 @@ namespace MicrogridApi.Tests.Unit
             var list = Assert.IsType<List<EnergyReservation>>(okResult.Value);
             Assert.Equal(2, list.Count);
         }
+
+        // =========================================================================
+        // SECTION 9: TERMINAL STATUS & HARDENED VALIDATION TESTS
+        // =========================================================================
+
+        [Fact]
+        public async Task Update_CancelledReservation_ReturnsBadRequest()
+        {
+            var oldSlotTime = DateTime.UtcNow.AddHours(25);
+            var slot = new EnergyBookingSlot
+            {
+                Id = "slot-cancelled",
+                SlotId = "SLOT-CANCELLED",
+                StationId = "ST-1",
+                Date = oldSlotTime.Date,
+                StartTime = oldSlotTime.ToString("HH:mm"),
+                EndTime = oldSlotTime.AddHours(1).ToString("HH:mm"),
+                Capacity = 5,
+                Availability = 4,
+                Status = "Available"
+            };
+            _slots.Add(slot);
+
+            var reservation = new EnergyReservation
+            {
+                Id = "res-cancelled",
+                ReservationId = "RES-CANCELLED",
+                ProsumerNic = "123456789V",
+                StationId = "ST-1",
+                SlotId = "SLOT-CANCELLED",
+                Status = "Cancelled"
+            };
+            _reservations.Add(reservation);
+
+            var req = new UpdateReservationRequest { StationId = "ST-1", SlotId = "SLOT-NEW" };
+            var result = await _controller.Update("res-cancelled", req);
+
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+            Assert.Equal(400, badRequest.StatusCode);
+
+            // Verify availability was NOT exchanged
+            Assert.Equal(4, slot.Availability);
+            Assert.Equal(5, slot.Capacity);
+        }
+
+        [Fact]
+        public async Task Update_CompletedReservation_ReturnsBadRequest()
+        {
+            var oldSlotTime = DateTime.UtcNow.AddHours(25);
+            var slot = new EnergyBookingSlot
+            {
+                Id = "slot-completed",
+                SlotId = "SLOT-COMPLETED",
+                StationId = "ST-1",
+                Date = oldSlotTime.Date,
+                StartTime = oldSlotTime.ToString("HH:mm"),
+                EndTime = oldSlotTime.AddHours(1).ToString("HH:mm"),
+                Capacity = 5,
+                Availability = 4,
+                Status = "Available"
+            };
+            _slots.Add(slot);
+
+            var reservation = new EnergyReservation
+            {
+                Id = "res-completed",
+                ReservationId = "RES-COMPLETED",
+                ProsumerNic = "123456789V",
+                StationId = "ST-1",
+                SlotId = "SLOT-COMPLETED",
+                Status = "Completed"
+            };
+            _reservations.Add(reservation);
+
+            var req = new UpdateReservationRequest { StationId = "ST-1", SlotId = "SLOT-NEW" };
+            var result = await _controller.Update("res-completed", req);
+
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+            Assert.Equal(400, badRequest.StatusCode);
+
+            // Verify availability was NOT exchanged
+            Assert.Equal(4, slot.Availability);
+            Assert.Equal(5, slot.Capacity);
+        }
+
+        [Fact]
+        public async Task Update_SameSlotDifferentStation_ReturnsBadRequest()
+        {
+            var reservation = new EnergyReservation
+            {
+                Id = "res-diff-station",
+                ReservationId = "RES-DIFF-ST",
+                ProsumerNic = "123456789V",
+                StationId = "ST-1",
+                SlotId = "SLOT-1",
+                Status = "Pending"
+            };
+            _reservations.Add(reservation);
+
+            // Request specifies same SlotId but different StationId
+            var req = new UpdateReservationRequest { StationId = "ST-OTHER", SlotId = "SLOT-1" };
+            var result = await _controller.Update("res-diff-station", req);
+
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+            Assert.Equal(400, badRequest.StatusCode);
+        }
+
+        [Fact]
+        public async Task Create_WhenInsertFails_RollbackPreservesCapacityInvariant()
+        {
+            _prosumers.Add(new Prosumer { Nic = "123456789V", Status = "active" });
+            _stations.Add(new MicrogridNode { NodeId = "ST-1", Status = "active" });
+
+            var slotDate = DateTime.UtcNow.Date.AddDays(2);
+            var slot = new EnergyBookingSlot
+            {
+                SlotId = "SLOT-ROLLBACK",
+                StationId = "ST-1",
+                Date = slotDate,
+                StartTime = "10:00",
+                EndTime = "11:00",
+                Capacity = 5,
+                Availability = 5,
+                Status = "Available"
+            };
+            _slots.Add(slot);
+
+            // Force InsertOneAsync on reservations to fail
+            _mockReservationsCollection
+                .Setup(c => c.InsertOneAsync(It.IsAny<EnergyReservation>(), It.IsAny<InsertOneOptions>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("Simulated DB Insert Failure"));
+
+            var req = new CreateReservationRequest { ProsumerNic = "123456789V", StationId = "ST-1", SlotId = "SLOT-ROLLBACK" };
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => _controller.Create(req));
+
+            // Availability must be safely rolled back to 5, never exceeding capacity 5
+            Assert.Equal(5, slot.Availability);
+            Assert.Equal(5, slot.Capacity);
+        }
     }
 }

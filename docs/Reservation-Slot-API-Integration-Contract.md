@@ -115,7 +115,9 @@ All endpoints accept and return JSON using standard **camelCase** property namin
 - **Purpose:** Retrieve all booking slots, with optional query filtering by station and calendar date.
 - **Query Parameters:**
   - `stationId` *(string, optional)*: Match exact station ID (e.g., `?stationId=ST-001`).
-  - `date` *(string, optional)*: Match exact calendar date in `YYYY-MM-DD` or ISO 8601 format (e.g., `?date=2026-09-25`).
+  - `date` *(string, optional)*: Match exact calendar date in strict `YYYY-MM-DD` format (e.g., `?date=2026-09-25`).
+- **Validation Rules:**
+  - If `date` is provided and does not strictly adhere to `YYYY-MM-DD`, returns `400 Bad Request`: `{ "message": "Invalid date format. Expected YYYY-MM-DD." }`.
 - **Response `200 OK`:**
   ```json
   [
@@ -168,17 +170,19 @@ All endpoints accept and return JSON using standard **camelCase** property namin
   ```
 - **Validation Rules Enforced by Server:**
   1. `stationId` must be non-empty and reference an existing `MicrogridNode` with `status == "active"`.
-  2. `capacity` must be an integer `> 0`.
-  3. `startTime` and `endTime` must be valid `HH:mm` format strings.
-  4. `endTime` must be strictly greater than `startTime`.
-  5. Server initializes `availability = capacity`, `status = "Available"`, and generates unique `slotId`.
+  2. `date` is mandatory and cannot be `default(DateTime)` or `DateTime.MinValue`. Missing or default date returns `400 Bad Request`: `{ "message": "Date is required." }`.
+  3. `capacity` must be an integer `> 0`.
+  4. `startTime` and `endTime` must strictly adhere to 24-hour `HH:mm` format (e.g., `09:00`, `18:30`). Arbitrary TimeSpan strings (e.g., `09:00:00`, `9:00`) are rejected.
+  5. `endTime` must be strictly greater than `startTime`.
+  6. Server initializes `availability = capacity`, `status = "Available"`, and generates unique `slotId`.
 - **Response `201 Created`:**
   - Header: `Location: /api/slots/{id}`
   - Body: Complete `EnergyBookingSlot` JSON object.
 - **Errors:**
   - `400 Bad Request`: `{ "message": "StationId is required." }`
+  - `400 Bad Request`: `{ "message": "Date is required." }`
   - `400 Bad Request`: `{ "message": "Capacity must be greater than 0." }`
-  - `400 Bad Request`: `{ "message": "Invalid time format for StartTime or EndTime." }`
+  - `400 Bad Request`: `{ "message": "Invalid time format for StartTime or EndTime. Expected format is HH:mm." }`
   - `400 Bad Request`: `{ "message": "EndTime must be after StartTime." }`
   - `400 Bad Request`: `{ "message": "Cannot create slots for an inactive station." }`
   - `404 Not Found`: `{ "message": "Station not found." }`
@@ -201,13 +205,16 @@ All endpoints accept and return JSON using standard **camelCase** property namin
   ```
 - **Contract Constraints & Safeguards:**
   1. **Editable Fields:** `date` *(optional)*, `startTime` *(optional)*, `endTime` *(optional)*, `status` *(optional: `"Available"` or `"Unavailable"`)*.
-  2. **Server-Controlled / Protected:** `capacity` and `availability` are strictly ignored and CANNOT be manipulated through this endpoint.
-  3. **Active-Reservation Schedule Protection:** If any schedule property (`date`, `startTime`, or `endTime`) is modified, the backend inspects `EnergyReservations` for active bookings (`status == "Pending"` or `status == "Approved"`). If active reservations exist, the schedule modification is **rejected** to prevent schedule corruption for booked prosumers.
-  4. **Status-Only Updates:** Operators can update `status` to `"Unavailable"` (or back to `"Available"`) at any time without triggering the active reservation schedule lock.
+  2. **Date Validation:** If `date` is supplied, it cannot be `default(DateTime)` or `DateTime.MinValue` (returns `400 Bad Request`: `{ "message": "Date is required." }`).
+  3. **Strict Time Validation:** Modified `startTime` and `endTime` must adhere strictly to `HH:mm` format.
+  4. **Server-Controlled / Protected:** `capacity` and `availability` are strictly ignored and CANNOT be manipulated through this endpoint.
+  5. **Active-Reservation Schedule Protection:** If any schedule property (`date`, `startTime`, or `endTime`) is modified, the backend inspects `EnergyReservations` for active bookings (`status == "Pending"` or `status == "Approved"`). If active reservations exist, the schedule modification is **rejected** to prevent schedule corruption for booked prosumers.
+  6. **Status-Only Updates:** Operators can update `status` to `"Unavailable"` (or back to `"Available"`) at any time without triggering the active reservation schedule lock.
 - **Response `200 OK`:** Updated `EnergyBookingSlot` JSON object.
 - **Errors:**
+  - `400 Bad Request`: `{ "message": "Date is required." }`
   - `400 Bad Request`: `{ "message": "Status must be 'Available' or 'Unavailable'." }`
-  - `400 Bad Request`: `{ "message": "Invalid time format for StartTime or EndTime." }`
+  - `400 Bad Request`: `{ "message": "Invalid time format for StartTime or EndTime. Expected format is HH:mm." }`
   - `400 Bad Request`: `{ "message": "EndTime must be after StartTime." }`
   - `400 Bad Request`: `{ "message": "Cannot modify the slot schedule because active reservations exist for this slot." }`
   - `404 Not Found`: `{ "message": "Slot not found." }`
@@ -262,8 +269,9 @@ All endpoints accept and return JSON using standard **camelCase** property namin
   3. Station must exist and have `status == "active"`.
   4. Slot must exist, match `stationId`, have `status == "Available"`, and `availability > 0`.
   5. **7-Day Booking Rule:** Slot start time (`slot.Date + slot.StartTime`) must be in the future and cannot exceed 7 days from current UTC time (`DateTime.UtcNow <= slotStartTime <= DateTime.UtcNow.AddDays(7)`).
-  6. **Atomic Concurrency Protection:** Slot `availability` is atomically decremented (`-1`) via `FindOneAndUpdateAsync` checking `availability > 0`. If reservation creation fails, availability is rolled back (`+1`).
-  7. Reservation is initialized with `status = "Pending"`.
+  6. **Atomic Concurrency Protection:** Slot `availability` is atomically decremented (`-1`) via `FindOneAndUpdateAsync` checking `availability > 0`.
+  7. **Safe Rollback / Invariant Protection:** If reservation creation fails, availability is rolled back (`+1`) conditionally checking `availability < capacity`. This strictly guarantees the invariant `0 <= availability <= capacity`.
+  8. Reservation is initialized with `status = "Pending"`.
 - **Response `201 Created`:**
   - Header: `Location: /api/reservations/{id}`
   - Body: Complete `EnergyReservation` JSON object.
@@ -297,17 +305,23 @@ All endpoints accept and return JSON using standard **camelCase** property namin
   ```
 - **Validation Rules Enforced by Server:**
   1. Reservation must exist (`404 Not Found` if missing).
-  2. **Same-Slot Idempotency:** If `slotId` matches the reservation's current slot, returns `200 OK` immediately without altering availability.
-  3. **12-Hour Modification Notice Rule:** Evaluated against the **CURRENT** slot's start time (`currentSlot.Date + currentSlot.StartTime`). The current UTC time must be at least 12 hours prior (`currentSlotStart - now >= 12 hours`). Otherwise rejected with 400 Bad Request.
-  4. **Target Slot Validation:** New slot must exist, belong to requested station, have `status == "Available"`, have `availability > 0`, and satisfy the 7-day booking window.
-  5. **Atomic Availability Exchange:**
-     - Step A: Decrements new slot `availability` by 1.
-     - Step B: Increments old slot `availability` by 1.
+  2. **Terminal Status Protection:** If reservation is `"Cancelled"` or `"Completed"`, modification is **rejected** (`400 Bad Request`: `{ "message": "Cancelled reservations cannot be modified." }` or `{ "message": "Completed reservations cannot be modified." }`). Only modifiable reservations (`"Pending"` or `"Approved"`) can be rescheduled. Slot availability is never exchanged for terminal reservations.
+  3. **Same-Slot Station Validation:** If `slotId` matches the reservation's current slot:
+     - If `stationId` also matches: treated as a safe no-op and returns `200 OK` immediately without altering availability.
+     - If `stationId` does not match: rejected with `400 Bad Request`: `{ "message": "Slot does not belong to the requested station." }`.
+  4. **12-Hour Modification Notice Rule:** Evaluated against the **CURRENT** slot's start time (`currentSlot.Date + currentSlot.StartTime`). The current UTC time must be at least 12 hours prior (`currentSlotStart - now >= 12 hours`). Otherwise rejected with 400 Bad Request.
+  5. **Target Slot Validation:** New slot must exist, belong to requested station, have `status == "Available"`, have `availability > 0`, and satisfy the 7-day booking window.
+  6. **Safe Atomic Availability Exchange:**
+     - Step A: Decrements new slot `availability` by 1 (`FindOneAndUpdateAsync` checking `availability > 0`).
+     - Step B: Increments old slot `availability` by 1 (conditionally checking `availability < capacity`). If this fails, safely rolls back new slot decrement conditional on `availability < capacity`.
      - Step C: Updates reservation with new `stationId`, `slotId`, and `updatedAt`.
-     - Multi-tier rollback ensures zero lost availability if any database operation fails.
+     - Rollback on failure safely restores new slot (`+1` if `< capacity`) and old slot (`-1` if `> 0`), preserving `0 <= availability <= capacity`.
 - **Response `200 OK`:** Updated `EnergyReservation` JSON object.
 - **Errors:**
   - `400 Bad Request`: `{ "message": "StationId and SlotId are required." }`
+  - `400 Bad Request`: `{ "message": "Cancelled reservations cannot be modified." }`
+  - `400 Bad Request`: `{ "message": "Completed reservations cannot be modified." }`
+  - `400 Bad Request`: `{ "message": "Slot does not belong to the requested station." }`
   - `400 Bad Request`: `{ "message": "Modification requires at least 12 hours' notice." }`
   - `400 Bad Request`: `{ "message": "New slot does not belong to the requested station." }`
   - `400 Bad Request`: `{ "message": "New slot is not available for booking." }`
@@ -434,10 +448,14 @@ If a request payload fails JSON deserialization or type binding, ASP.NET Core re
 
 ## 9. Team Integration Contracts & Dependencies
 
-### 9.1 Component 1 (Thumashi) — Prosumer Identity & Authentication
-- **Contract Boundary:** Component 2 consumes `ProsumerNic` sent in reservation requests.
+### 9.1 Component 1 (Thumashi) — Prosumer Identity, Authentication & Role Authorization
+- **Contract Boundary:** Component 2 consumes `ProsumerNic` sent in reservation requests and maps resources to prosumers and station operators.
 - **Verification Rule:** `ReservationsController` checks `MongoDbContext.Prosumers` to ensure the NIC exists and `status == "active"`.
-- **Dependency:** Component 1 maintains prosumer profiles and authenticates requests. JWT token passing or user context extraction will map prosumer claims to `ProsumerNic`.
+- **Authentication Infrastructure Status (Pending Team Delivery):**
+  - Component 1 owns authentication and user/prosumer management (`AuthController.cs`, `UsersController.cs`, `ProsumersController.cs`).
+  - As of the current `dev` baseline, ASP.NET Core authentication middleware (`AddAuthentication` / JWT Bearer scheme) has not yet been introduced to `dev`. `AuthController` currently issues placeholder GUID tokens without JWT claims or token validation middleware.
+  - Per project instructions, Component 2 does not invent a parallel or synthetic authentication mechanism.
+  - Once Component 1 delivers the shared ASP.NET Core JWT authentication scheme on `dev`, the role model (`Backoffice`, `GridOperator`, and `Prosumer`) and reservation ownership checks (Prosumer restricted to their own NIC; GridOperator/Backoffice granted slot creation/modification rights) will bind directly to standard ASP.NET Core `[Authorize(Roles = ...)]` attributes and `HttpContext.User` claims without disrupting Component 2's underlying business rules.
 
 ### 9.2 Component 3 (Nethasa) — Dashboards, Booking Views & Microgrid Nodes
 - **Station Mapping:** `MicrogridNode.NodeId` is the foreign key for `EnergyBookingSlot.StationId` and `EnergyReservation.StationId`.

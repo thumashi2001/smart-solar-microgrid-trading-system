@@ -190,16 +190,18 @@ public class ReservationsController : ControllerBase
         }
         catch (Exception)
         {
-            // In a production system with replica sets, we would use a MongoDB transaction.
-            // For this standalone setup, if reservation creation fails, we must manually rollback the availability decrement to avoid partial state.
+            // Concurrency-safe compensation: restore availability ONLY if availability < slot.Capacity
+            // to preserve the invariant: 0 <= Availability <= Capacity
+            var rollbackFilter = Builders<EnergyBookingSlot>.Filter.And(
+                Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
+                Builders<EnergyBookingSlot>.Filter.Lt(s => s.Availability, slot.Capacity)
+            );
+
             var rollbackUpdate = Builders<EnergyBookingSlot>.Update
                 .Inc(s => s.Availability, 1)
                 .Set(s => s.UpdatedAt, DateTime.UtcNow);
             
-            await _db.EnergyBookingSlots.UpdateOneAsync(
-                Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId), 
-                rollbackUpdate
-            );
+            await _db.EnergyBookingSlots.UpdateOneAsync(rollbackFilter, rollbackUpdate);
             
             throw; // Re-throw to return 500 error after rollback
         }
@@ -232,10 +234,33 @@ public class ReservationsController : ControllerBase
             return NotFound(new { message = "Reservation not found." });
         }
 
-        // Optimization: If slot is unchanged, return immediately
+        // Terminal Reservation Update Protection:
+        // Completed and Cancelled reservations must not be modified, and availability must not be exchanged.
+        if (existingReservation.Status == "Cancelled")
+        {
+            return BadRequest(new { message = "Cancelled reservations cannot be modified." });
+        }
+
+        if (existingReservation.Status == "Completed")
+        {
+            return BadRequest(new { message = "Completed reservations cannot be modified." });
+        }
+
+        if (existingReservation.Status != "Pending" && existingReservation.Status != "Approved")
+        {
+            return BadRequest(new { message = "Reservation is not in a modifiable status." });
+        }
+
+        // Optimization: If slot is unchanged and station matches, return immediately (no-op).
+        // If slot matches but station does not match, reject the request as invalid.
         if (existingReservation.SlotId == request.SlotId)
         {
-            return Ok(existingReservation);
+            if (existingReservation.StationId == request.StationId)
+            {
+                return Ok(existingReservation);
+            }
+
+            return BadRequest(new { message = "Slot does not belong to the requested station." });
         }
 
         // 2. Find current slot and calculate 12-hour rule
@@ -335,31 +360,47 @@ public class ReservationsController : ControllerBase
         // Step B: Increment Old Slot
         try
         {
+            var oldSlotFilter = Builders<EnergyBookingSlot>.Filter.And(
+                Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, currentSlot.SlotId),
+                Builders<EnergyBookingSlot>.Filter.Lt(s => s.Availability, currentSlot.Capacity)
+            );
+
             var oldSlotUpdate = Builders<EnergyBookingSlot>.Update
                 .Inc(s => s.Availability, 1)
                 .Set(s => s.UpdatedAt, DateTime.UtcNow);
 
             var oldSlotResult = await _db.EnergyBookingSlots.UpdateOneAsync(
-                Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, currentSlot.SlotId),
+                oldSlotFilter,
                 oldSlotUpdate
             );
 
             if (oldSlotResult.ModifiedCount == 0)
             {
-                // The old slot was not found/modified. We must rollback the new slot decrement.
-                await _db.EnergyBookingSlots.UpdateOneAsync(
+                // The old slot was not found/modified or already at capacity.
+                // We must safely rollback the new slot decrement conditional on Availability < Capacity.
+                var rollbackNewSlotFilter = Builders<EnergyBookingSlot>.Filter.And(
                     Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
-                    Builders<EnergyBookingSlot>.Update.Inc(s => s.Availability, 1)
+                    Builders<EnergyBookingSlot>.Filter.Lt(s => s.Availability, newSlot.Capacity)
+                );
+
+                await _db.EnergyBookingSlots.UpdateOneAsync(
+                    rollbackNewSlotFilter,
+                    Builders<EnergyBookingSlot>.Update.Inc(s => s.Availability, 1).Set(s => s.UpdatedAt, DateTime.UtcNow)
                 );
                 return BadRequest(new { message = "Failed to update current slot availability." });
             }
         }
         catch (Exception)
         {
-            // Rollback New Slot decrement
-            await _db.EnergyBookingSlots.UpdateOneAsync(
+            // Rollback New Slot decrement safely
+            var rollbackNewSlotFilter = Builders<EnergyBookingSlot>.Filter.And(
                 Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
-                Builders<EnergyBookingSlot>.Update.Inc(s => s.Availability, 1)
+                Builders<EnergyBookingSlot>.Filter.Lt(s => s.Availability, newSlot.Capacity)
+            );
+
+            await _db.EnergyBookingSlots.UpdateOneAsync(
+                rollbackNewSlotFilter,
+                Builders<EnergyBookingSlot>.Update.Inc(s => s.Availability, 1).Set(s => s.UpdatedAt, DateTime.UtcNow)
             );
             throw;
         }
@@ -379,16 +420,19 @@ public class ReservationsController : ControllerBase
         }
         catch (Exception)
         {
-            // Rollback both slots
-            // 1. Rollback new slot (safely add 1 back)
-            await _db.EnergyBookingSlots.UpdateOneAsync(
+            // Rollback both slots safely
+            // 1. Rollback new slot (safely add 1 back ONLY if Availability < Capacity)
+            var rollbackNewSlotFilter = Builders<EnergyBookingSlot>.Filter.And(
                 Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
-                Builders<EnergyBookingSlot>.Update.Inc(s => s.Availability, 1)
+                Builders<EnergyBookingSlot>.Filter.Lt(s => s.Availability, newSlot.Capacity)
+            );
+
+            await _db.EnergyBookingSlots.UpdateOneAsync(
+                rollbackNewSlotFilter,
+                Builders<EnergyBookingSlot>.Update.Inc(s => s.Availability, 1).Set(s => s.UpdatedAt, DateTime.UtcNow)
             );
             
             // 2. Rollback old slot (safely decrement ONLY IF Availability > 0 to prevent invariant violation)
-            // We use a conditional update to ensure we don't accidentally push it below 0 
-            // if another operation concurrently claimed the released availability.
             var oldSlotRollbackFilter = Builders<EnergyBookingSlot>.Filter.And(
                 Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, currentSlot.SlotId),
                 Builders<EnergyBookingSlot>.Filter.Gt(s => s.Availability, 0)
@@ -396,7 +440,7 @@ public class ReservationsController : ControllerBase
             
             await _db.EnergyBookingSlots.UpdateOneAsync(
                 oldSlotRollbackFilter,
-                Builders<EnergyBookingSlot>.Update.Inc(s => s.Availability, -1)
+                Builders<EnergyBookingSlot>.Update.Inc(s => s.Availability, -1).Set(s => s.UpdatedAt, DateTime.UtcNow)
             );
             throw;
         }

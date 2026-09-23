@@ -568,5 +568,159 @@ namespace MicrogridApi.Tests.Unit
             var badRequestBefore = Assert.IsType<BadRequestObjectResult>(resultBefore);
             Assert.Equal(400, badRequestBefore.StatusCode);
         }
+
+        // CREATE: Missing/Default date rejected
+        [Fact]
+        public async Task Create_DefaultDate_ReturnsBadRequest()
+        {
+            SetupStation(new MicrogridNode { NodeId = "ST-1", Status = "active" });
+            var req = new CreateSlotRequest
+            {
+                StationId = "ST-1",
+                Date = default,
+                StartTime = "09:00",
+                EndTime = "11:00",
+                Capacity = 5
+            };
+
+            var result = await _controller.Create(req);
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+            Assert.Equal(400, badRequest.StatusCode);
+        }
+
+        [Fact]
+        public async Task Create_MinDate_ReturnsBadRequest()
+        {
+            SetupStation(new MicrogridNode { NodeId = "ST-1", Status = "active" });
+            var req = new CreateSlotRequest
+            {
+                StationId = "ST-1",
+                Date = DateTime.MinValue,
+                StartTime = "09:00",
+                EndTime = "11:00",
+                Capacity = 5
+            };
+
+            var result = await _controller.Create(req);
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+            Assert.Equal(400, badRequest.StatusCode);
+        }
+
+        // UPDATE: Default date rejected
+        [Fact]
+        public async Task Update_DefaultDate_ReturnsBadRequest()
+        {
+            var slot = new EnergyBookingSlot { Id = "1", SlotId = "SLOT-1", Date = new DateTime(2026, 1, 1), StartTime = "09:00", EndTime = "10:00", Status = "Available" };
+            SetupSlot(slot);
+
+            var req = new UpdateSlotRequest { Date = default(DateTime) };
+            var result = await _controller.Update("1", req);
+
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+            Assert.Equal(400, badRequest.StatusCode);
+        }
+
+        // TIME: Strict HH:mm tests
+        [Fact]
+        public async Task Create_InvalidTimeFormatWithSeconds_ReturnsBadRequest()
+        {
+            SetupStation(new MicrogridNode { NodeId = "ST-1", Status = "active" });
+            var req = new CreateSlotRequest
+            {
+                StationId = "ST-1",
+                Date = new DateTime(2026, 4, 1),
+                StartTime = "09:00:00",
+                EndTime = "11:00:00",
+                Capacity = 5
+            };
+
+            var result = await _controller.Create(req);
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+            Assert.Equal(400, badRequest.StatusCode);
+        }
+
+        [Fact]
+        public async Task Create_InvalidTimeFormatSingleDigitHour_ReturnsBadRequest()
+        {
+            SetupStation(new MicrogridNode { NodeId = "ST-1", Status = "active" });
+            var req = new CreateSlotRequest
+            {
+                StationId = "ST-1",
+                Date = new DateTime(2026, 4, 1),
+                StartTime = "9:00",
+                EndTime = "11:00",
+                Capacity = 5
+            };
+
+            var result = await _controller.Create(req);
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+            Assert.Equal(400, badRequest.StatusCode);
+        }
+
+        [Fact]
+        public async Task Create_StrictHHmm_Valid_ReturnsCreatedAtAction()
+        {
+            SetupStation(new MicrogridNode { NodeId = "ST-1", Status = "active" });
+            var req = new CreateSlotRequest
+            {
+                StationId = "ST-1",
+                Date = new DateTime(2026, 4, 1),
+                StartTime = "18:30",
+                EndTime = "19:45",
+                Capacity = 5
+            };
+
+            var result = await _controller.Create(req);
+            var created = Assert.IsType<CreatedAtActionResult>(result);
+            Assert.Equal(201, created.StatusCode);
+        }
+
+        [Fact]
+        public async Task Update_StrictHHmm_InvalidWithSeconds_ReturnsBadRequest()
+        {
+            var slot = new EnergyBookingSlot { Id = "1", SlotId = "SLOT-1", Date = new DateTime(2026, 1, 1), StartTime = "09:00", EndTime = "10:00", Status = "Available" };
+            SetupSlot(slot);
+
+            var req = new UpdateSlotRequest { StartTime = "09:30:00" };
+            var result = await _controller.Update("1", req);
+
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+            Assert.Equal(400, badRequest.StatusCode);
+        }
+
+        // GET ALL: Date query validation
+        [Fact]
+        public async Task GetAll_InvalidDateFormat_ReturnsBadRequest()
+        {
+            var result = await _controller.GetAll(null, "invalid-date");
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+            Assert.Equal(400, badRequest.StatusCode);
+        }
+
+        [Fact]
+        public async Task GetAll_InvalidDateFormatSlashes_ReturnsBadRequest()
+        {
+            var result = await _controller.GetAll(null, "2026/04/01");
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+            Assert.Equal(400, badRequest.StatusCode);
+        }
+
+        [Fact]
+        public async Task GetAll_ValidDateFormat_ReturnsOk()
+        {
+            SetupSlot(new EnergyBookingSlot { Id = "1", SlotId = "SLOT-1", Date = new DateTime(2026, 4, 1), StartTime = "09:00", EndTime = "10:00", Status = "Available" });
+            var result = await _controller.GetAll(null, "2026-04-01");
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            Assert.Equal(200, okResult.StatusCode);
+        }
+
+        [Fact]
+        public async Task GetAll_MissingDate_ReturnsOk()
+        {
+            SetupSlot(new EnergyBookingSlot { Id = "1", SlotId = "SLOT-1", Date = new DateTime(2026, 4, 1), StartTime = "09:00", EndTime = "10:00", Status = "Available" });
+            var result = await _controller.GetAll(null, null);
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            Assert.Equal(200, okResult.StatusCode);
+        }
     }
 }
