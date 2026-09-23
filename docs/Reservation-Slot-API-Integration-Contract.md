@@ -106,18 +106,57 @@ Do NOT duplicate `SolarStationInfo` or node data. Use the exact relationships de
 - **Description:** Cancels an existing reservation. (Logical cancellation).
 - **Request Body:** None.
 
-## 6. Business-Rule Notes for UI/Dashboard
+## 6. Actual Existing Slot API Endpoints
+
+### 6.1 GET /api/slots
+- **Description:** Returns slots, with optional filtering.
+- **Request Parameters (Query):** 
+  - `stationId` (optional string): Filters by Station ID.
+  - `date` (optional string): Filters by Date (YYYY-MM-DD).
+- **Response Structure:** JSON Array of Slot objects (see section 3).
+
+### 6.2 GET /api/slots/{id}
+- **Description:** Returns a single slot by its MongoDB `_id`.
+- **Request Parameters:** `id` (path parameter, MongoDB ObjectId)
+- **Response Structure:** A single Slot object (see section 3).
+- **Errors:** 404 Not Found if missing.
+
+### 6.3 POST /api/slots
+- **Description:** Creates a new slot for a station.
+- **Request Body:**
+```json
+{
+  "stationId": "ST-001",
+  "date": "2026-09-25",
+  "startTime": "09:00",
+  "endTime": "10:00",
+  "capacity": 5
+}
+```
+- **Business Rule:** Capacity must be > 0. The referenced Station must exist and be active. The system automatically initializes `availability` to match `capacity`.
+
+### 6.4 PUT /api/slots/{id}
+- **Description:** Updates a slot's status.
+- **Request Body:**
+```json
+{
+  "status": "Unavailable"
+}
+```
+- **Business Rule:** To preserve integrity, this endpoint ONLY allows updating the `status` (to `"Available"` or `"Unavailable"`). Modifying `capacity` or `availability` directly is blocked to prevent breaking ongoing reservation logic.
+
+## 7. Business-Rule Notes for UI/Dashboard
 
 Nethasa's UI must respect the API as the absolute authority for these business rules:
 
 - **Creation:** A slot must exist, belong to the station, be `"Available"`, have `Availability > 0`, and start within 7 days. Availability is decreased safely.
 - **Modification:** Requires at least 12 hours' notice based on the CURRENT slot's start time. Availability is automatically exchanged.
 - **Cancellation:** Requires at least 12 hours' notice. The reservation becomes `"Cancelled"` and is retained for history. The slot's availability is atomically restored where possible.
+- **Slot Capacity vs Availability:** Capacity is immutable after slot creation to ensure system integrity. Slot deactivation (changing status to `"Unavailable"`) prevents new bookings but does not forcefully cancel existing active reservations.
 
-## 7. Known API Gaps for Dashboards and Search
+## 8. Remaining API Gaps for Dashboards and Search
 
-Currently, the API has the following gaps regarding dashboard requirements:
+Currently, the API has the following remaining gaps regarding dashboard requirements:
 
-1. **No `/api/slots` Endpoints:** There is no `SlotsController`. While slots exist in MongoDB and are validated internally by the Reservations API, there are no endpoints for the dashboard to retrieve slot lists, fetch slot availability, or search for slots.
-2. **Missing Search & Server-Side Filtering:** The API only supports retrieving all reservations globally (`/api/reservations`) or by a specific Prosumer NIC (`/api/reservations/history/{prosumerNic}`). It does not currently support server-side filtering by Station ID, Status, or Date range. Nethasa would currently have to fetch all reservations and filter them client-side.
-3. **No Dashboard Aggregation Endpoints:** To calculate total, pending, approved, or cancelled counts per station, the dashboard must fetch the entire list of reservations and run manual counting logic. A dedicated `/api/reservations/stats` endpoint would be highly beneficial to avoid massive payload transfers as the database scales.
+1. **Missing Reservation Search & Server-Side Filtering:** The API only supports retrieving all reservations globally (`/api/reservations`) or by a specific Prosumer NIC (`/api/reservations/history/{prosumerNic}`). It does not currently support server-side filtering by Station ID, Status, or Date range. Nethasa would currently have to fetch all reservations and filter them client-side.
+2. **No Dashboard Aggregation Endpoints:** To calculate total, pending, approved, or cancelled counts per station, the dashboard must fetch the entire list of reservations and run manual counting logic. A dedicated `/api/reservations/stats` endpoint would be highly beneficial to avoid massive payload transfers as the database scales.
