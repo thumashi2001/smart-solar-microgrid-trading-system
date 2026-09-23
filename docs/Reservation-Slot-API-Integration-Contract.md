@@ -136,14 +136,20 @@ Do NOT duplicate `SolarStationInfo` or node data. Use the exact relationships de
 - **Business Rule:** Capacity must be > 0. The referenced Station must exist and be active. The system automatically initializes `availability` to match `capacity`.
 
 ### 6.4 PUT /api/slots/{id}
-- **Description:** Updates a slot's status.
+- **Description:** Updates a slot's schedule and/or status.
 - **Request Body:**
 ```json
 {
+  "date": "2026-09-26",
+  "startTime": "10:00",
+  "endTime": "11:00",
   "status": "Unavailable"
 }
 ```
-- **Business Rule:** To preserve integrity, this endpoint ONLY allows updating the `status` (to `"Available"` or `"Unavailable"`). Modifying `capacity` or `availability` directly is blocked to prevent breaking ongoing reservation logic.
+- **Business Rule:** 
+  - **Editable:** `date`, `startTime`, `endTime`, `status`.
+  - **Server-controlled:** `availability`, `capacity` (these cannot be updated via this endpoint).
+  - **Safety Check:** If you attempt to change the `date`, `startTime`, or `endTime`, the server will check for any active reservations (Status: "Pending" or "Approved") referencing this slot. If any exist, the update is rejected with a 400 error to prevent scheduling corruption. Status can still be changed to "Unavailable" without triggering this check.
 
 ## 7. Business-Rule Notes for UI/Dashboard
 

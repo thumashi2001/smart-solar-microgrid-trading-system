@@ -119,7 +119,7 @@ public class SlotsController : ControllerBase
     }
 
     // PUT: api/slots/{id}
-    // Updates slot status. We strictly prevent updating Capacity and Availability here to preserve invariants.
+    // Updates slot schedule and status. Strictly prevents updating Capacity and Availability.
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, UpdateSlotRequest request)
     {
@@ -132,22 +132,89 @@ public class SlotsController : ControllerBase
             return NotFound(new { message = "Slot not found." });
         }
 
-        if (request.Status != "Available" && request.Status != "Unavailable")
+        // Validate Status
+        if (!string.IsNullOrWhiteSpace(request.Status) && 
+            request.Status != "Available" && 
+            request.Status != "Unavailable")
         {
             return BadRequest(new { message = "Status must be 'Available' or 'Unavailable'." });
         }
 
-        var update = Builders<EnergyBookingSlot>.Update
-            .Set(s => s.Status, request.Status)
+        bool scheduleChanging = false;
+        var newDate = existingSlot.Date;
+        var newStartTime = existingSlot.StartTime;
+        var newEndTime = existingSlot.EndTime;
+
+        if (request.Date.HasValue && request.Date.Value.Date != existingSlot.Date.Date)
+        {
+            newDate = request.Date.Value.Date;
+            scheduleChanging = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.StartTime) && request.StartTime != existingSlot.StartTime)
+        {
+            newStartTime = request.StartTime;
+            scheduleChanging = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.EndTime) && request.EndTime != existingSlot.EndTime)
+        {
+            newEndTime = request.EndTime;
+            scheduleChanging = true;
+        }
+
+        if (scheduleChanging)
+        {
+            // Validate new time formats
+            if (!TimeSpan.TryParse(newStartTime, out var parsedStartTime) || 
+                !TimeSpan.TryParse(newEndTime, out var parsedEndTime))
+            {
+                return BadRequest(new { message = "Invalid time format for StartTime or EndTime." });
+            }
+
+            if (parsedEndTime <= parsedStartTime)
+            {
+                return BadRequest(new { message = "EndTime must be after StartTime." });
+            }
+
+            // SAFEGUARD: Do not allow schedule changes if active reservations exist
+            var activeReservationsExist = await _db.EnergyReservations
+                .Find(r => r.SlotId == existingSlot.SlotId && (r.Status == "Pending" || r.Status == "Approved"))
+                .AnyAsync();
+
+            if (activeReservationsExist)
+            {
+                return BadRequest(new { message = "Cannot modify the slot schedule because active reservations exist for this slot." });
+            }
+        }
+
+        // Apply safe updates
+        var updateDefinitionBuilder = Builders<EnergyBookingSlot>.Update
             .Set(s => s.UpdatedAt, DateTime.UtcNow);
+
+        if (scheduleChanging)
+        {
+            updateDefinitionBuilder = updateDefinitionBuilder
+                .Set(s => s.Date, newDate)
+                .Set(s => s.StartTime, newStartTime)
+                .Set(s => s.EndTime, newEndTime);
+            
+            existingSlot.Date = newDate;
+            existingSlot.StartTime = newStartTime;
+            existingSlot.EndTime = newEndTime;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Status))
+        {
+            updateDefinitionBuilder = updateDefinitionBuilder.Set(s => s.Status, request.Status);
+            existingSlot.Status = request.Status;
+        }
 
         await _db.EnergyBookingSlots.UpdateOneAsync(
             s => s.Id == id,
-            update
+            updateDefinitionBuilder
         );
 
-        // Fetch updated to return to client
-        existingSlot.Status = request.Status;
         existingSlot.UpdatedAt = DateTime.UtcNow;
 
         return Ok(existingSlot);
