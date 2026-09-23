@@ -5,3 +5,47 @@ GET {{MicrogridApi_HostAddress}}/api/reservations
 Accept: application/json
 
 ###
+
+### Get all slots
+GET {{MicrogridApi_HostAddress}}/api/slots
+Accept: application/json
+
+###
+
+### Get all microgrid nodes
+GET {{MicrogridApi_HostAddress}}/api/microgridnodes
+Accept: application/json
+
+###
+
+### Create energy booking slot - Colombo Solar Hub
+POST {{MicrogridApi_HostAddress}}/api/slots
+Content-Type: application/json
+
+{
+  "stationId": "NODE-63A4B955",
+  "date": "2026-09-28",
+  "startTime": "10:00",
+  "endTime": "11:00",
+  "capacity": 50
+}
+
+###
+
+### Get all prosumers
+GET {{MicrogridApi_HostAddress}}/api/prosumers
+Accept: application/json
+
+###
+
+### Create reservation - Lehansa / Colombo Solar Hub
+POST {{MicrogridApi_HostAddress}}/api/reservations
+Content-Type: application/json
+
+{
+  "prosumerNic": "200884501266",
+  "stationId": "NODE-63A4B955",
+  "slotId": "SLOT-2F309E4E"
+}
+
+###
