@@ -222,6 +222,7 @@ public class ReservationsController : ControllerBase
             return BadRequest(new { message = "StationId and SlotId are required." });
         }
 
+        // 1. Find reservation
         var existingReservation = await _db.EnergyReservations
             .Find(r => r.Id == id)
             .FirstOrDefaultAsync();
@@ -231,19 +232,154 @@ public class ReservationsController : ControllerBase
             return NotFound(new { message = "Reservation not found." });
         }
 
-        // TODO: Phase 3 - Implement deep validation:
-        // 1. 12-hour rule for updating.
-        // 2. If slot changed: restore old slot availability, decrease new slot availability.
-        // 3. Validate new station and new slot exist/active/available.
+        // Optimization: If slot is unchanged, return immediately
+        if (existingReservation.SlotId == request.SlotId)
+        {
+            return Ok(existingReservation);
+        }
 
+        // 2. Find current slot and calculate 12-hour rule
+        var currentSlot = await _db.EnergyBookingSlots
+            .Find(s => s.SlotId == existingReservation.SlotId)
+            .FirstOrDefaultAsync();
+
+        if (currentSlot == null)
+        {
+            return NotFound(new { message = "Current slot not found." });
+        }
+
+        if (!TimeSpan.TryParse(currentSlot.StartTime, out var currentStartTimeSpan))
+        {
+            return BadRequest(new { message = "Invalid current slot start time format." });
+        }
+
+        var currentSlotStartDateTime = currentSlot.Date.Date + currentStartTimeSpan;
+        var now = DateTime.UtcNow;
+
+        if (currentSlotStartDateTime - now < TimeSpan.FromHours(12))
+        {
+            return BadRequest(new { message = "Modification requires at least 12 hours' notice." });
+        }
+
+        // 3. Find and validate requested new slot
+        var newSlot = await _db.EnergyBookingSlots
+            .Find(s => s.SlotId == request.SlotId)
+            .FirstOrDefaultAsync();
+
+        if (newSlot == null)
+        {
+            return NotFound(new { message = "New slot not found." });
+        }
+
+        if (newSlot.StationId != request.StationId)
+        {
+            return BadRequest(new { message = "New slot does not belong to the requested station." });
+        }
+
+        if (newSlot.Status != "Available")
+        {
+            return BadRequest(new { message = "New slot is not available for booking." });
+        }
+
+        if (newSlot.Availability <= 0)
+        {
+            return BadRequest(new { message = "New slot has no remaining availability." });
+        }
+
+        // 4. Validate new slot 7-day rule
+        if (!TimeSpan.TryParse(newSlot.StartTime, out var newStartTimeSpan))
+        {
+            return BadRequest(new { message = "Invalid new slot start time format." });
+        }
+
+        var newSlotStartDateTime = newSlot.Date.Date + newStartTimeSpan;
+        var maxAllowedDateTime = now.AddDays(7);
+
+        if (newSlotStartDateTime < now)
+        {
+            return BadRequest(new { message = "Cannot modify reservation to a slot in the past." });
+        }
+
+        if (newSlotStartDateTime > maxAllowedDateTime)
+        {
+            return BadRequest(new { message = "New slot must be scheduled within 7 days from now." });
+        }
+
+        // 5. Atomic Availability Exchange
+        // Since we are not using MongoDB multi-document transactions (standalone assumption),
+        // we use a safe sequence: decrement new slot -> increment old slot -> update reservation.
+        // If anything fails, we roll back the previous steps.
+
+        // Step A: Decrement New Slot
+        var newSlotFilter = Builders<EnergyBookingSlot>.Filter.And(
+            Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
+            Builders<EnergyBookingSlot>.Filter.Gt(s => s.Availability, 0),
+            Builders<EnergyBookingSlot>.Filter.Eq(s => s.Status, "Available")
+        );
+
+        var newSlotUpdate = Builders<EnergyBookingSlot>.Update
+            .Inc(s => s.Availability, -1)
+            .Set(s => s.UpdatedAt, DateTime.UtcNow);
+
+        var updatedNewSlot = await _db.EnergyBookingSlots.FindOneAndUpdateAsync(
+            newSlotFilter, 
+            newSlotUpdate, 
+            new FindOneAndUpdateOptions<EnergyBookingSlot> { ReturnDocument = ReturnDocument.After }
+        );
+
+        if (updatedNewSlot == null)
+        {
+            return BadRequest(new { message = "New slot has no remaining availability or could not be booked due to concurrency." });
+        }
+
+        // Step B: Increment Old Slot
+        try
+        {
+            var oldSlotUpdate = Builders<EnergyBookingSlot>.Update
+                .Inc(s => s.Availability, 1)
+                .Set(s => s.UpdatedAt, DateTime.UtcNow);
+
+            await _db.EnergyBookingSlots.UpdateOneAsync(
+                Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, currentSlot.SlotId),
+                oldSlotUpdate
+            );
+        }
+        catch (Exception)
+        {
+            // Rollback New Slot decrement
+            await _db.EnergyBookingSlots.UpdateOneAsync(
+                Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
+                Builders<EnergyBookingSlot>.Update.Inc(s => s.Availability, 1)
+            );
+            throw;
+        }
+
+        // Step C: Update Reservation
         existingReservation.StationId = request.StationId;
         existingReservation.SlotId = request.SlotId;
         existingReservation.UpdatedAt = DateTime.UtcNow;
+        // Status remains unchanged
 
-        await _db.EnergyReservations.ReplaceOneAsync(
-            r => r.Id == id,
-            existingReservation
-        );
+        try
+        {
+            await _db.EnergyReservations.ReplaceOneAsync(
+                r => r.Id == id,
+                existingReservation
+            );
+        }
+        catch (Exception)
+        {
+            // Rollback both slots
+            await _db.EnergyBookingSlots.UpdateOneAsync(
+                Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
+                Builders<EnergyBookingSlot>.Update.Inc(s => s.Availability, 1)
+            );
+            await _db.EnergyBookingSlots.UpdateOneAsync(
+                Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, currentSlot.SlotId),
+                Builders<EnergyBookingSlot>.Update.Inc(s => s.Availability, -1)
+            );
+            throw;
+        }
 
         return Ok(existingReservation);
     }
