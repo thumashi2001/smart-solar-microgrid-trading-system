@@ -150,7 +150,8 @@ public class ReservationsController : ControllerBase
         // only one can consume a given availability unit. Capacity remains untouched.
         var filter = Builders<EnergyBookingSlot>.Filter.And(
             Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
-            Builders<EnergyBookingSlot>.Filter.Gt(s => s.Availability, 0)
+            Builders<EnergyBookingSlot>.Filter.Gt(s => s.Availability, 0),
+            Builders<EnergyBookingSlot>.Filter.Eq(s => s.Status, "Available")
         );
 
         var update = Builders<EnergyBookingSlot>.Update
