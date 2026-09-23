@@ -480,7 +480,9 @@ public class ReservationsController : ControllerBase
 
         // 5. Atomic Slot Availability Restoration
         // We conditionally increment availability ONLY if it is currently less than the known capacity.
+        // Because 'Capacity' is immutable per project rules, using currentSlot.Capacity is safe from staleness.
         // This guarantees the invariant: 0 <= Availability <= Capacity
+        bool slotRestored = false;
         try
         {
             var slotFilter = Builders<EnergyBookingSlot>.Filter.And(
@@ -494,22 +496,35 @@ public class ReservationsController : ControllerBase
 
             var oldSlotResult = await _db.EnergyBookingSlots.UpdateOneAsync(slotFilter, slotUpdate);
 
-            // If ModifiedCount is 0, it means either the slot was deleted concurrently OR
-            // the availability was mysteriously already at capacity.
-            // Since the reservation was validly cancelled, we do not rollback the cancellation.
-            // The user requested a cancellation, and the logical reservation is now cancelled.
-            // Any availability anomaly (e.g. ModifiedCount == 0) represents a system edge case,
-            // but the invariant 0 <= Availability <= Capacity remains mathematically secure.
+            if (oldSlotResult.ModifiedCount > 0)
+            {
+                slotRestored = true;
+            }
         }
         catch (Exception)
         {
             // If the database fails catastrophically during the slot increment, the reservation
             // remains cancelled. Compensating a failed cancellation back to "Pending" because 
-            // the slot availability couldn't update is unsafe (user might assume it's cancelled).
-            // We log internally (or throw) to track the anomaly.
+            // the slot availability couldn't update is unsafe and violates user expectations.
+            // The reservation is successfully cancelled, but availability is "lost" due to this DB anomaly.
+            // The exception is thrown to return a 500 error to the client, indicating a partial failure.
             throw; 
         }
 
-        return Ok(updatedReservation);
+        if (!slotRestored)
+        {
+            // ModifiedCount == 0 means the slot was deleted concurrently OR the availability was already 
+            // magically at capacity (data anomaly). 
+            // The logical cancellation succeeded, so we return 200 OK but include an explanatory message.
+            return Ok(new { 
+                message = "Reservation cancelled successfully, but slot availability could not be automatically restored due to an anomaly.", 
+                reservation = updatedReservation 
+            });
+        }
+
+        return Ok(new { 
+            message = "Reservation cancelled successfully.", 
+            reservation = updatedReservation 
+        });
     }
 }
