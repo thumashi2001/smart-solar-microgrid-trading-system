@@ -179,8 +179,7 @@ public class SlotsController : ControllerBase
 
             // SAFEGUARD: Do not allow schedule changes if active reservations exist
             var activeReservationsExist = await _db.EnergyReservations
-                .Find(r => r.SlotId == existingSlot.SlotId && (r.Status == "Pending" || r.Status == "Approved"))
-                .AnyAsync();
+                .CountDocumentsAsync(r => r.SlotId == existingSlot.SlotId && (r.Status == "Pending" || r.Status == "Approved")) > 0;
 
             if (activeReservationsExist)
             {

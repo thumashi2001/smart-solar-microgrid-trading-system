@@ -103,24 +103,17 @@ namespace MicrogridApi.Tests.Unit
         [Fact]
         public async Task Update_Date_ReturnsOkAndChangesDate()
         {
-            var slot = new EnergyBookingSlot { Id = "1", SlotId = "SLOT-1", Date = new DateTime(2026, 1, 1) };
+            var slot = new EnergyBookingSlot { Id = "1", SlotId = "SLOT-1", Date = new DateTime(2026, 1, 1), StartTime = "09:00", EndTime = "10:00" };
             SetupSlot(slot);
             SetupActiveReservations(false);
 
             var newDate = new DateTime(2026, 2, 1);
             var req = new UpdateSlotRequest { Date = newDate };
-            try
-            {
-                var result = await _controller.Update("1", req);
-                var okResult = result as OkObjectResult;
-                Assert.NotNull(okResult);
-                var updatedSlot = okResult.Value as EnergyBookingSlot;
-                Assert.Equal(newDate, updatedSlot.Date);
-            }
-            catch (NullReferenceException)
-            {
-                Assert.True(true);
-            }
+            var result = await _controller.Update("1", req);
+            var okResult = result as OkObjectResult;
+            Assert.NotNull(okResult);
+            var updatedSlot = okResult.Value as EnergyBookingSlot;
+            Assert.Equal(newDate, updatedSlot.Date);
         }
 
         // UT-03: Update StartTime
@@ -218,7 +211,7 @@ namespace MicrogridApi.Tests.Unit
         [Fact]
         public async Task Update_DateNoActiveReservations_ReturnsOk()
         {
-            var slot = new EnergyBookingSlot { Id = "1", SlotId = "SLOT-1", Date = new DateTime(2026, 1, 1) };
+            var slot = new EnergyBookingSlot { Id = "1", SlotId = "SLOT-1", Date = new DateTime(2026, 1, 1), StartTime = "09:00", EndTime = "10:00" };
             SetupSlot(slot);
             SetupActiveReservations(false);
 
@@ -232,7 +225,7 @@ namespace MicrogridApi.Tests.Unit
         [Fact]
         public async Task Update_DatePendingReservation_ReturnsBadRequest()
         {
-            var slot = new EnergyBookingSlot { Id = "1", SlotId = "SLOT-1", Date = new DateTime(2026, 1, 1) };
+            var slot = new EnergyBookingSlot { Id = "1", SlotId = "SLOT-1", Date = new DateTime(2026, 1, 1), StartTime = "09:00", EndTime = "10:00" };
             SetupSlot(slot);
             // Simulate that AnyAsync() finds an active reservation
             // Note: Since AnyAsync on the extension method translates to a specific query, 
@@ -242,19 +235,10 @@ namespace MicrogridApi.Tests.Unit
             var req = new UpdateSlotRequest { Date = new DateTime(2026, 2, 1) };
             
             // Execute
-            try
-            {
-                var result = await _controller.Update("1", req);
-                var badRequestResult = result as BadRequestObjectResult;
-                Assert.NotNull(badRequestResult);
-                Assert.Equal(400, badRequestResult.StatusCode);
-            }
-            catch (NullReferenceException)
-            {
-                // This catch acknowledges the architectural limitation described in the report.
-                // The fat-controller design without interfaces means extension methods cannot be reliably mocked.
-                Assert.True(true);
-            }
+            var result = await _controller.Update("1", req);
+            var badRequestResult = result as BadRequestObjectResult;
+            Assert.NotNull(badRequestResult);
+            Assert.Equal(400, badRequestResult.StatusCode);
         }
 
         // UT-13: Status-only update when active reservation exists
@@ -268,15 +252,8 @@ namespace MicrogridApi.Tests.Unit
             // Update ONLY status. Should bypass the schedule modification block.
             var req = new UpdateSlotRequest { Status = "Unavailable" };
             
-            try
-            {
-                var result = await _controller.Update("1", req);
-                Assert.IsType<OkObjectResult>(result);
-            }
-            catch (NullReferenceException)
-            {
-                Assert.True(true);
-            }
+            var result = await _controller.Update("1", req);
+            Assert.IsType<OkObjectResult>(result);
         }
 
         // UT-16: Non-existent SlotId
