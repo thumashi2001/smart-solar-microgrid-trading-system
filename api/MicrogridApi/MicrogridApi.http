@@ -1,6 +1,7 @@
 @MicrogridApi_HostAddress = http://localhost:5148
 
-GET {{MicrogridApi_HostAddress}}/weatherforecast/
+### Get all reservations
+GET {{MicrogridApi_HostAddress}}/api/reservations
 Accept: application/json
 
 ###
