@@ -409,6 +409,7 @@ public class ReservationsController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id)
     {
+        // 1. Find reservation
         var existingReservation = await _db.EnergyReservations
             .Find(r => r.Id == id)
             .FirstOrDefaultAsync();
@@ -418,24 +419,97 @@ public class ReservationsController : ControllerBase
             return NotFound(new { message = "Reservation not found." });
         }
 
+        // 2. Prevent invalid state transitions (including double cancellation)
         if (existingReservation.Status == "Cancelled")
         {
             return BadRequest(new { message = "Reservation is already cancelled." });
         }
 
-        // TODO: Phase 3 - Implement deep validation:
-        // 1. 12-hour rule for cancelling.
-        // 2. Restore slot availability by 1.
+        if (existingReservation.Status == "Completed")
+        {
+            return BadRequest(new { message = "Completed reservations cannot be cancelled." });
+        }
 
-        var update = Builders<EnergyReservation>.Update
+        // 3. Find the current slot and calculate 12-hour rule
+        var currentSlot = await _db.EnergyBookingSlots
+            .Find(s => s.SlotId == existingReservation.SlotId)
+            .FirstOrDefaultAsync();
+
+        if (currentSlot == null)
+        {
+            // If the slot doesn't exist, we can't calculate the 12-hour rule or restore availability safely.
+            return NotFound(new { message = "Associated slot not found. Cannot safely cancel." });
+        }
+
+        if (!TimeSpan.TryParse(currentSlot.StartTime, out var currentStartTimeSpan))
+        {
+            return BadRequest(new { message = "Invalid slot start time format." });
+        }
+
+        var slotStartDateTime = currentSlot.Date.Date + currentStartTimeSpan;
+        var now = DateTime.UtcNow;
+
+        if (slotStartDateTime - now < TimeSpan.FromHours(12))
+        {
+            return BadRequest(new { message = "Cancellation requires at least 12 hours' notice." });
+        }
+
+        // 4. Atomic Reservation Update (Logical Cancellation)
+        // By checking the status in the filter, we ensure that if two cancellation requests arrive at the 
+        // exact same millisecond, only ONE will succeed in updating the status.
+        var reservationFilter = Builders<EnergyReservation>.Filter.And(
+            Builders<EnergyReservation>.Filter.Eq(r => r.Id, id),
+            Builders<EnergyReservation>.Filter.Ne(r => r.Status, "Cancelled"),
+            Builders<EnergyReservation>.Filter.Ne(r => r.Status, "Completed")
+        );
+
+        var reservationUpdate = Builders<EnergyReservation>.Update
             .Set(r => r.Status, "Cancelled")
             .Set(r => r.UpdatedAt, DateTime.UtcNow);
 
-        await _db.EnergyReservations.UpdateOneAsync(
-            r => r.Id == id,
-            update
+        var updatedReservation = await _db.EnergyReservations.FindOneAndUpdateAsync(
+            reservationFilter,
+            reservationUpdate,
+            new FindOneAndUpdateOptions<EnergyReservation> { ReturnDocument = ReturnDocument.After }
         );
 
-        return Ok(new { message = "Reservation cancelled successfully." });
+        if (updatedReservation == null)
+        {
+            return BadRequest(new { message = "Reservation could not be cancelled. It may have already been cancelled concurrently." });
+        }
+
+        // 5. Atomic Slot Availability Restoration
+        // We conditionally increment availability ONLY if it is currently less than the known capacity.
+        // This guarantees the invariant: 0 <= Availability <= Capacity
+        try
+        {
+            var slotFilter = Builders<EnergyBookingSlot>.Filter.And(
+                Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, currentSlot.SlotId),
+                Builders<EnergyBookingSlot>.Filter.Lt(s => s.Availability, currentSlot.Capacity)
+            );
+
+            var slotUpdate = Builders<EnergyBookingSlot>.Update
+                .Inc(s => s.Availability, 1)
+                .Set(s => s.UpdatedAt, DateTime.UtcNow);
+
+            var oldSlotResult = await _db.EnergyBookingSlots.UpdateOneAsync(slotFilter, slotUpdate);
+
+            // If ModifiedCount is 0, it means either the slot was deleted concurrently OR
+            // the availability was mysteriously already at capacity.
+            // Since the reservation was validly cancelled, we do not rollback the cancellation.
+            // The user requested a cancellation, and the logical reservation is now cancelled.
+            // Any availability anomaly (e.g. ModifiedCount == 0) represents a system edge case,
+            // but the invariant 0 <= Availability <= Capacity remains mathematically secure.
+        }
+        catch (Exception)
+        {
+            // If the database fails catastrophically during the slot increment, the reservation
+            // remains cancelled. Compensating a failed cancellation back to "Pending" because 
+            // the slot availability couldn't update is unsafe (user might assume it's cancelled).
+            // We log internally (or throw) to track the anomaly.
+            throw; 
+        }
+
+        return Ok(updatedReservation);
     }
 }
