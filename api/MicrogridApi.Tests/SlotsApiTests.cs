@@ -18,11 +18,12 @@ using Xunit;
 namespace MicrogridApi.Tests.Integration
 {
     // API/Integration tests using WebApplicationFactory
+    [Trait("Category", "Integration")]
     public class SlotsApiTests : IClassFixture<WebApplicationFactory<Program>>, IAsyncLifetime
     {
         private readonly HttpClient _client;
         private readonly WebApplicationFactory<Program> _factory;
-        private IMongoDatabase _database;
+        private IMongoDatabase? _database;
         private const string TestDbName = "microgrid_test_db";
 
         public SlotsApiTests(WebApplicationFactory<Program> factory)

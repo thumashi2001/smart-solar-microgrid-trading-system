@@ -27,3 +27,6 @@ android/app/release/
 .vscode/
 api/MicrogridApi/appsettings.json
 api/MicrogridApi/appsettings.Development.json
+
+# ===== Test Output =====
+TestResults/

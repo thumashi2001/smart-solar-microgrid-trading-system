@@ -75,9 +75,14 @@ public class SlotsController : ControllerBase
             return BadRequest(new { message = "Capacity must be greater than 0." });
         }
 
-        if (!TimeSpan.TryParse(request.StartTime, out _) || !TimeSpan.TryParse(request.EndTime, out _))
+        if (!TimeSpan.TryParse(request.StartTime, out var parsedStartTime) || !TimeSpan.TryParse(request.EndTime, out var parsedEndTime))
         {
             return BadRequest(new { message = "Invalid time format for StartTime or EndTime." });
+        }
+
+        if (parsedEndTime <= parsedStartTime)
+        {
+            return BadRequest(new { message = "EndTime must be after StartTime." });
         }
 
         // Validate that the referenced station exists and is active

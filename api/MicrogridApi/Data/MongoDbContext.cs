@@ -30,18 +30,18 @@ public class MongoDbContext
         );
     }
 
-    public virtual IMongoCollection<User> Users =>
+    public IMongoCollection<User> Users =>
         _database.GetCollection<User>("users");
 
-    public virtual IMongoCollection<Prosumer> Prosumers =>
+    public IMongoCollection<Prosumer> Prosumers =>
         _database.GetCollection<Prosumer>("prosumers");
 
-    public virtual IMongoCollection<MicrogridNode> MicrogridNodes =>
+    public IMongoCollection<MicrogridNode> MicrogridNodes =>
         _database.GetCollection<MicrogridNode>("SolarStationInfo");
 
-    public virtual IMongoCollection<EnergyBookingSlot> EnergyBookingSlots =>
+    public IMongoCollection<EnergyBookingSlot> EnergyBookingSlots =>
         _database.GetCollection<EnergyBookingSlot>("energyBookingSlots");
 
-    public virtual IMongoCollection<EnergyReservation> EnergyReservations =>
+    public IMongoCollection<EnergyReservation> EnergyReservations =>
         _database.GetCollection<EnergyReservation>("energyReservation");
 }
