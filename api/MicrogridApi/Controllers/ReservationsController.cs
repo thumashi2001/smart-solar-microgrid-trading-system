@@ -70,14 +70,107 @@ public class ReservationsController : ControllerBase
             return BadRequest(new { message = "ProsumerNic, StationId, and SlotId are required." });
         }
 
-        // TODO: Phase 3 - Implement deep validation:
-        // 1. Prosumer exists and is active.
-        // 2. Station exists and is active.
-        // 3. Slot exists, is active/available, belongs to station.
-        // 4. 7-day booking window rule.
-        // 5. Slot availability check (> 0).
-        // 6. Decrease slot availability by 1.
+        // 1. Find and validate Prosumer
+        var prosumer = await _db.Prosumers
+            .Find(p => p.Nic == request.ProsumerNic)
+            .FirstOrDefaultAsync();
 
+        if (prosumer == null)
+        {
+            return NotFound(new { message = "Prosumer not found." });
+        }
+
+        if (prosumer.Status != "active")
+        {
+            return BadRequest(new { message = "Prosumer is not active." });
+        }
+
+        // 2. Find and validate Station
+        var station = await _db.MicrogridNodes
+            .Find(s => s.NodeId == request.StationId)
+            .FirstOrDefaultAsync();
+
+        if (station == null)
+        {
+            return NotFound(new { message = "Station not found." });
+        }
+
+        if (station.Status != "active")
+        {
+            return BadRequest(new { message = "Station is not active." });
+        }
+
+        // 3. Find and validate Slot
+        var slot = await _db.EnergyBookingSlots
+            .Find(s => s.SlotId == request.SlotId)
+            .FirstOrDefaultAsync();
+
+        if (slot == null)
+        {
+            return NotFound(new { message = "Slot not found." });
+        }
+
+        if (slot.StationId != request.StationId)
+        {
+            return BadRequest(new { message = "Slot does not belong to the selected station." });
+        }
+
+        if (slot.Status != "Available")
+        {
+            return BadRequest(new { message = "Slot is not available for booking." });
+        }
+
+        if (slot.Availability <= 0)
+        {
+            return BadRequest(new { message = "Slot has no remaining availability." });
+        }
+
+        // 4. 7-day booking window calculation
+        if (!TimeSpan.TryParse(slot.StartTime, out var startTimeSpan))
+        {
+            return BadRequest(new { message = "Invalid slot start time format." });
+        }
+
+        var slotStartDateTime = slot.Date.Date + startTimeSpan;
+        var now = DateTime.UtcNow;
+        var maxAllowedDateTime = now.AddDays(7);
+
+        if (slotStartDateTime < now)
+        {
+            return BadRequest(new { message = "Cannot create a reservation for a slot in the past." });
+        }
+
+        if (slotStartDateTime > maxAllowedDateTime)
+        {
+            return BadRequest(new { message = "Reservation must be scheduled within 7 days from now." });
+        }
+
+        // 5. Concurrency protection: Atomically check availability > 0 and decrement by 1.
+        // We use FindOneAndUpdateAsync to ensure that even if multiple requests arrive simultaneously,
+        // only one can consume a given availability unit. Capacity remains untouched.
+        var filter = Builders<EnergyBookingSlot>.Filter.And(
+            Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
+            Builders<EnergyBookingSlot>.Filter.Gt(s => s.Availability, 0)
+        );
+
+        var update = Builders<EnergyBookingSlot>.Update
+            .Inc(s => s.Availability, -1)
+            .Set(s => s.UpdatedAt, DateTime.UtcNow);
+
+        var options = new FindOneAndUpdateOptions<EnergyBookingSlot>
+        {
+            ReturnDocument = ReturnDocument.After
+        };
+
+        var updatedSlot = await _db.EnergyBookingSlots.FindOneAndUpdateAsync(filter, update, options);
+
+        if (updatedSlot == null)
+        {
+            // If updatedSlot is null, it means either the slot was deleted OR availability dropped to 0 concurrently.
+            return BadRequest(new { message = "Slot has no remaining availability or could not be booked due to high concurrency." });
+        }
+
+        // 6. Create Reservation
         var newReservation = new EnergyReservation
         {
             ReservationId = $"RES-{Guid.NewGuid().ToString("N")[..8].ToUpper()}",
@@ -86,10 +179,29 @@ public class ReservationsController : ControllerBase
             SlotId = request.SlotId,
             Status = "Pending",
             CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            UpdatedAt = DateTime.UtcNow,
+            TransactionReference = ""
         };
 
-        await _db.EnergyReservations.InsertOneAsync(newReservation);
+        try
+        {
+            await _db.EnergyReservations.InsertOneAsync(newReservation);
+        }
+        catch (Exception)
+        {
+            // In a production system with replica sets, we would use a MongoDB transaction.
+            // For this standalone setup, if reservation creation fails, we must manually rollback the availability decrement to avoid partial state.
+            var rollbackUpdate = Builders<EnergyBookingSlot>.Update
+                .Inc(s => s.Availability, 1)
+                .Set(s => s.UpdatedAt, DateTime.UtcNow);
+            
+            await _db.EnergyBookingSlots.UpdateOneAsync(
+                Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId), 
+                rollbackUpdate
+            );
+            
+            throw; // Re-throw to return 500 error after rollback
+        }
 
         return CreatedAtAction(
             nameof(GetById),
