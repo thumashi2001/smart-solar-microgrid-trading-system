@@ -339,10 +339,20 @@ public class ReservationsController : ControllerBase
                 .Inc(s => s.Availability, 1)
                 .Set(s => s.UpdatedAt, DateTime.UtcNow);
 
-            await _db.EnergyBookingSlots.UpdateOneAsync(
+            var oldSlotResult = await _db.EnergyBookingSlots.UpdateOneAsync(
                 Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, currentSlot.SlotId),
                 oldSlotUpdate
             );
+
+            if (oldSlotResult.ModifiedCount == 0)
+            {
+                // The old slot was not found/modified. We must rollback the new slot decrement.
+                await _db.EnergyBookingSlots.UpdateOneAsync(
+                    Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
+                    Builders<EnergyBookingSlot>.Update.Inc(s => s.Availability, 1)
+                );
+                return BadRequest(new { message = "Failed to update current slot availability." });
+            }
         }
         catch (Exception)
         {
@@ -370,12 +380,22 @@ public class ReservationsController : ControllerBase
         catch (Exception)
         {
             // Rollback both slots
+            // 1. Rollback new slot (safely add 1 back)
             await _db.EnergyBookingSlots.UpdateOneAsync(
                 Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
                 Builders<EnergyBookingSlot>.Update.Inc(s => s.Availability, 1)
             );
-            await _db.EnergyBookingSlots.UpdateOneAsync(
+            
+            // 2. Rollback old slot (safely decrement ONLY IF Availability > 0 to prevent invariant violation)
+            // We use a conditional update to ensure we don't accidentally push it below 0 
+            // if another operation concurrently claimed the released availability.
+            var oldSlotRollbackFilter = Builders<EnergyBookingSlot>.Filter.And(
                 Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, currentSlot.SlotId),
+                Builders<EnergyBookingSlot>.Filter.Gt(s => s.Availability, 0)
+            );
+            
+            await _db.EnergyBookingSlots.UpdateOneAsync(
+                oldSlotRollbackFilter,
                 Builders<EnergyBookingSlot>.Update.Inc(s => s.Availability, -1)
             );
             throw;
