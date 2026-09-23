@@ -14,6 +14,16 @@ import com.microgrid.app.ui.theme.MicrogridAppTheme
 sealed class Screen {
     object Login : Screen()
     object Register : Screen()
+
+    object Dashboard : Screen()
+    object Bookings : Screen()
+    object BookingHistory : Screen()
+    object SearchBookings : Screen()
+
+    data class BookingDetails(
+        val bookingId: String
+    ) : Screen()
+
     object Profile : Screen()
     object MyProfile : Screen()
     object ChangePassword : Screen()
@@ -41,7 +51,7 @@ class MainActivity : ComponentActivity() {
                                 onLoginSuccess = { _, fullName, _, nic ->
                                     loggedInFullName = fullName
                                     loggedInNic = nic
-                                    currentScreen = Screen.Profile
+                                    currentScreen = Screen.Dashboard
                                 },
                                 onNavigateToRegister = { currentScreen = Screen.Register }
                             )
@@ -50,6 +60,77 @@ class MainActivity : ComponentActivity() {
                             RegisterScreen(
                                 onRegisterSuccess = { currentScreen = Screen.Login },
                                 onNavigateToLogin = { currentScreen = Screen.Login }
+                            )
+                        }
+                        is Screen.Dashboard -> {
+                            ProsumerDashboardScreen(
+                                fullName = loggedInFullName,
+                                nic = loggedInNic,
+                                onProfileClick = {
+                                    currentScreen = Screen.Profile
+                                },
+                                onBookingsClick = {
+                                    currentScreen = Screen.Bookings
+                                },
+                                onHistoryClick = {
+                                    currentScreen = Screen.BookingHistory
+                                },
+                                onSearchClick = {
+                                    currentScreen = Screen.SearchBookings
+                                }
+                            )
+                        }
+                        is Screen.Bookings -> {
+                            BookingsScreen(
+                                onBackClick = {
+                                    currentScreen = Screen.Dashboard
+                                },
+                                onBookingClick = { bookingId ->
+                                    currentScreen = Screen.BookingDetails(bookingId)
+                                },
+                                onHomeClick = {
+                                    currentScreen = Screen.Dashboard
+                                },
+                                onProfileClick = {
+                                    currentScreen = Screen.Profile
+                                }
+                            )
+                        }
+                        is Screen.BookingHistory -> {
+                            BookingHistoryScreen(
+                                onBackClick = {
+                                    currentScreen = Screen.Dashboard
+                                },
+                                onBookingClick = { bookingId ->
+                                    currentScreen = Screen.BookingDetails(bookingId)
+                                },
+                                onHomeClick = {
+                                    currentScreen = Screen.Dashboard
+                                },
+                                onBookingsClick = {
+                                    currentScreen = Screen.Bookings
+                                },
+                                onProfileClick = {
+                                    currentScreen = Screen.Profile
+                                }
+                            )
+                        }
+                        is Screen.SearchBookings -> {
+                            SearchBookingsScreen(
+                                onBackClick = {
+                                    currentScreen = Screen.Dashboard
+                                }
+                            )
+                        }
+                        is Screen.BookingDetails -> {
+
+                            val screen = currentScreen as Screen.BookingDetails
+
+                            BookingDetailsScreen(
+                                bookingId = screen.bookingId,
+                                onBackClick = {
+                                    currentScreen = Screen.Bookings
+                                }
                             )
                         }
                         is Screen.Profile -> {

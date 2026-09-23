@@ -1,0 +1,644 @@
+package com.microgrid.app.ui.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
+private val BookingGreen = Color(0xFF0B4F3C)
+private val BookingAccentGreen = Color(0xFF1E8754)
+private val BookingBackground = Color(0xFFF8F6F2)
+private val BookingGray = Color(0xFF7A7A7A)
+
+data class BookingUiModel(
+    val id: String,
+    val stationName: String,
+    val location: String,
+    val date: String,
+    val time: String,
+    val energyAmount: String,
+    val status: String
+)
+
+@Composable
+fun BookingsScreen(
+    onBackClick: () -> Unit,
+    onBookingClick: (String) -> Unit,
+    onHomeClick: () -> Unit,
+    onProfileClick: () -> Unit
+) {
+    var searchText by remember { mutableStateOf("") }
+    var selectedFilter by remember { mutableStateOf("All") }
+
+    // Temporary UI data.
+    // This will be replaced with live booking data from the Web API.
+    val bookings = remember {
+        listOf(
+            BookingUiModel(
+                id = "BK-1001",
+                stationName = "Colombo Solar Hub",
+                location = "Colombo",
+                date = "28 Sep 2026",
+                time = "10:00 AM",
+                energyAmount = "20 kWh",
+                status = "Pending"
+            ),
+            BookingUiModel(
+                id = "BK-1002",
+                stationName = "Malabe Solar Hub",
+                location = "Malabe",
+                date = "29 Sep 2026",
+                time = "02:30 PM",
+                energyAmount = "15 kWh",
+                status = "Approved"
+            ),
+            BookingUiModel(
+                id = "BK-1003",
+                stationName = "Kaduwela Energy Station",
+                location = "Kaduwela",
+                date = "30 Sep 2026",
+                time = "09:00 AM",
+                energyAmount = "25 kWh",
+                status = "Pending"
+            )
+        )
+    }
+
+    val filteredBookings = bookings.filter { booking ->
+
+        val matchesSearch =
+            booking.id.contains(searchText, ignoreCase = true) ||
+                    booking.stationName.contains(searchText, ignoreCase = true) ||
+                    booking.location.contains(searchText, ignoreCase = true)
+
+        val matchesFilter =
+            selectedFilter == "All" ||
+                    booking.status.equals(selectedFilter, ignoreCase = true)
+
+        matchesSearch && matchesFilter
+    }
+
+    Scaffold(
+        containerColor = BookingBackground,
+
+        bottomBar = {
+            BookingsBottomBar(
+                onHomeClick = onHomeClick,
+                onProfileClick = onProfileClick
+            )
+        }
+
+    ) { innerPadding ->
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .background(BookingBackground),
+            contentPadding = PaddingValues(
+                start = 20.dp,
+                end = 20.dp,
+                top = 18.dp,
+                bottom = 24.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+
+            item {
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+
+                    IconButton(
+                        onClick = onBackClick
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            tint = BookingGreen
+                        )
+                    }
+
+                    Column {
+
+                        Text(
+                            text = "My Bookings",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = BookingGreen
+                        )
+
+                        Text(
+                            text = "View and manage your energy reservations",
+                            fontSize = 12.sp,
+                            color = BookingGray
+                        )
+                    }
+                }
+            }
+
+            item {
+
+                OutlinedTextField(
+                    value = searchText,
+                    onValueChange = {
+                        searchText = it
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = {
+                        Text("Search booking, station or location")
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search"
+                        )
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = BookingAccentGreen,
+                        cursorColor = BookingAccentGreen
+                    )
+                )
+            }
+
+            item {
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+
+                    BookingFilterButton(
+                        title = "All",
+                        selected = selectedFilter == "All",
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        selectedFilter = "All"
+                    }
+
+                    BookingFilterButton(
+                        title = "Pending",
+                        selected = selectedFilter == "Pending",
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        selectedFilter = "Pending"
+                    }
+
+                    BookingFilterButton(
+                        title = "Approved",
+                        selected = selectedFilter == "Approved",
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        selectedFilter = "Approved"
+                    }
+                }
+            }
+
+            item {
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+
+                    Text(
+                        text = when (selectedFilter) {
+                            "Pending" -> "Pending Bookings"
+                            "Approved" -> "Approved Bookings"
+                            else -> "Current Bookings"
+                        },
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = BookingGreen
+                    )
+
+                    Text(
+                        text = "${filteredBookings.size} found",
+                        fontSize = 12.sp,
+                        color = BookingGray
+                    )
+                }
+            }
+
+            if (filteredBookings.isEmpty()) {
+
+                item {
+
+                    EmptyBookingsView()
+                }
+
+            } else {
+
+                items(
+                    items = filteredBookings,
+                    key = { it.id }
+                ) { booking ->
+
+                    BookingCard(
+                        booking = booking,
+                        onClick = {
+                            onBookingClick(booking.id)
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BookingFilterButton(
+    title: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+
+    if (selected) {
+
+        Button(
+            onClick = onClick,
+            modifier = modifier,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = BookingGreen
+            ),
+            shape = RoundedCornerShape(20.dp),
+            contentPadding = PaddingValues(
+                horizontal = 6.dp,
+                vertical = 8.dp
+            )
+        ) {
+
+            Text(
+                text = title,
+                fontSize = 12.sp
+            )
+        }
+
+    } else {
+
+        OutlinedButton(
+            onClick = onClick,
+            modifier = modifier,
+            shape = RoundedCornerShape(20.dp),
+            contentPadding = PaddingValues(
+                horizontal = 6.dp,
+                vertical = 8.dp
+            )
+        ) {
+
+            Text(
+                text = title,
+                fontSize = 12.sp,
+                color = BookingGreen
+            )
+        }
+    }
+}
+
+@Composable
+private fun BookingCard(
+    booking: BookingUiModel,
+    onClick: () -> Unit
+) {
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                onClick()
+            },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 2.dp
+        )
+    ) {
+
+        Column(
+            modifier = Modifier.padding(18.dp)
+        ) {
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+
+                    Text(
+                        text = booking.stationName,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = BookingGreen
+                    )
+
+                    Spacer(
+                        modifier = Modifier.height(4.dp)
+                    )
+
+                    Text(
+                        text = booking.id,
+                        fontSize = 11.sp,
+                        color = BookingGray
+                    )
+                }
+
+                BookingStatusBadge(
+                    status = booking.status
+                )
+            }
+
+            Spacer(
+                modifier = Modifier.height(16.dp)
+            )
+
+            BookingInfoRow(
+                icon = Icons.Default.LocationOn,
+                text = booking.location
+            )
+
+            Spacer(
+                modifier = Modifier.height(9.dp)
+            )
+
+            BookingInfoRow(
+                icon = Icons.Default.CalendarMonth,
+                text = booking.date
+            )
+
+            Spacer(
+                modifier = Modifier.height(9.dp)
+            )
+
+            BookingInfoRow(
+                icon = Icons.Default.Schedule,
+                text = booking.time
+            )
+
+            Spacer(
+                modifier = Modifier.height(9.dp)
+            )
+
+            BookingInfoRow(
+                icon = Icons.Default.Bolt,
+                text = booking.energyAmount
+            )
+
+            Spacer(
+                modifier = Modifier.height(15.dp)
+            )
+
+            HorizontalDivider(
+                color = Color(0xFFEAEAEA)
+            )
+
+            Spacer(
+                modifier = Modifier.height(12.dp)
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+
+                Text(
+                    text = "View Details",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = BookingAccentGreen
+                )
+
+                Spacer(
+                    modifier = Modifier.width(4.dp)
+                )
+
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = "View booking",
+                    tint = BookingAccentGreen,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BookingInfoRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    text: String
+) {
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = BookingAccentGreen,
+            modifier = Modifier.size(18.dp)
+        )
+
+        Spacer(
+            modifier = Modifier.width(10.dp)
+        )
+
+        Text(
+            text = text,
+            fontSize = 13.sp,
+            color = Color(0xFF444444)
+        )
+    }
+}
+
+@Composable
+private fun BookingStatusBadge(
+    status: String
+) {
+
+    val backgroundColor =
+        when (status.lowercase()) {
+
+            "approved" ->
+                Color(0xFFE4F4EA)
+
+            "pending" ->
+                Color(0xFFFFF3D6)
+
+            "cancelled" ->
+                Color(0xFFFFE4E1)
+
+            else ->
+                Color(0xFFEDEDED)
+        }
+
+    val textColor =
+        when (status.lowercase()) {
+
+            "approved" ->
+                Color(0xFF19733E)
+
+            "pending" ->
+                Color(0xFF9A6700)
+
+            "cancelled" ->
+                Color(0xFFB3261E)
+
+            else ->
+                Color.DarkGray
+        }
+
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = backgroundColor
+    ) {
+
+        Text(
+            text = status,
+            color = textColor,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(
+                horizontal = 12.dp,
+                vertical = 6.dp
+            )
+        )
+    }
+}
+
+@Composable
+private fun EmptyBookingsView() {
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 60.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .background(
+                    Color(0xFFE5F2EB),
+                    CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+
+            Icon(
+                imageVector = Icons.Default.CalendarMonth,
+                contentDescription = null,
+                tint = BookingAccentGreen,
+                modifier = Modifier.size(30.dp)
+            )
+        }
+
+        Spacer(
+            modifier = Modifier.height(16.dp)
+        )
+
+        Text(
+            text = "No bookings found",
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+            color = BookingGreen
+        )
+
+        Spacer(
+            modifier = Modifier.height(6.dp)
+        )
+
+        Text(
+            text = "Try changing your search or filter.",
+            fontSize = 13.sp,
+            color = BookingGray
+        )
+    }
+}
+
+@Composable
+private fun BookingsBottomBar(
+    onHomeClick: () -> Unit,
+    onProfileClick: () -> Unit
+) {
+
+    NavigationBar(
+        containerColor = Color.White
+    ) {
+
+        NavigationBarItem(
+            selected = false,
+            onClick = onHomeClick,
+            icon = {
+
+                Icon(
+                    imageVector = Icons.Default.Home,
+                    contentDescription = "Home"
+                )
+            },
+            label = {
+                Text("Home")
+            }
+        )
+
+        NavigationBarItem(
+            selected = true,
+            onClick = {},
+            icon = {
+
+                Icon(
+                    imageVector = Icons.Default.CalendarMonth,
+                    contentDescription = "Bookings"
+                )
+            },
+            label = {
+                Text("Bookings")
+            },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = BookingAccentGreen,
+                selectedTextColor = BookingAccentGreen
+            )
+        )
+
+        NavigationBarItem(
+            selected = false,
+            onClick = onProfileClick,
+            icon = {
+
+                Icon(
+                    imageVector = Icons.Default.Person,
+                    contentDescription = "Profile"
+                )
+            },
+            label = {
+                Text("Profile")
+            }
+        )
+    }
+}
