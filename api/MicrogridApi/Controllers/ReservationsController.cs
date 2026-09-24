@@ -219,9 +219,11 @@ public class ReservationsController : ControllerBase
                 createdReservation = newReservation;
                 break;
             }
-            catch (MongoWriteException ex) when (ex.WriteError.Category == ServerErrorCategory.DuplicateKey && attempt < maxRetries - 1)
+            catch (MongoWriteException ex) when (ex.WriteError.Category == ServerErrorCategory.DuplicateKey)
             {
-                // Unique ReservationId collision: retry with a newly generated ID
+                // Duplicate key detected:
+                // Attempts 0 and 1: continue loop to generate a fresh ReservationId.
+                // Final attempt (attempt 2): loop exits cleanly with createdReservation == null to return 409 Conflict.
             }
             catch (Exception)
             {
@@ -243,7 +245,7 @@ public class ReservationsController : ControllerBase
 
         if (createdReservation == null)
         {
-            // All retry attempts encountered duplicate keys: compensate slot availability
+            // All retry attempts encountered duplicate keys: compensate slot availability and return 409 Conflict
             var rollbackFilter = Builders<EnergyBookingSlot>.Filter.And(
                 Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
                 Builders<EnergyBookingSlot>.Filter.Lt(s => s.Availability, slot.Capacity)
@@ -269,6 +271,7 @@ public class ReservationsController : ControllerBase
     /// PUT: api/reservations/{id}
     /// Updates an existing reservation using optimistic concurrency and safe two-phase availability exchange.
     /// Eliminates dangerous decrement rollbacks by updating reservation state before releasing old slot space.
+    /// Explicitly verifies old-slot release result to prevent silent capacity leaks.
     /// </summary>
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, UpdateReservationRequest request)
@@ -485,7 +488,17 @@ public class ReservationsController : ControllerBase
             .Inc(s => s.Availability, 1)
             .Set(s => s.UpdatedAt, DateTime.UtcNow);
 
-        await _db.EnergyBookingSlots.UpdateOneAsync(oldSlotFilter, oldSlotUpdate);
+        var oldSlotResult = await _db.EnergyBookingSlots.UpdateOneAsync(oldSlotFilter, oldSlotUpdate);
+
+        if (oldSlotResult.ModifiedCount == 0)
+        {
+            // Do not report 200 OK success if old slot release failed.
+            // Return 500 Internal Server Error with diagnostic message and the updated reservation.
+            return StatusCode(500, new { 
+                message = "Reservation was updated to the new slot, but releasing capacity on the previous slot failed due to a database anomaly.", 
+                reservation = updatedReservation 
+            });
+        }
 
         return Ok(updatedReservation);
     }

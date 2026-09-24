@@ -14,17 +14,32 @@ public static class MongoDbIndexConfigurator
 {
     /// <summary>
     /// Configures unique indexes on SlotId and ReservationId via MongoDbContext.
-    /// Safe to call during application startup; catches connection exceptions if MongoDB is offline.
+    /// Must be awaited during application startup before accepting traffic.
+    /// If MongoDB is offline during local development, a diagnostic notice is logged.
+    /// If MongoDB is connected and index creation fails, an exception is thrown to halt startup.
     /// </summary>
-    public static async Task ConfigureIndexesAsync(MongoDbContext db)
+    public static async Task ConfigureIndexesAsync(MongoDbContext db, bool isDevelopment = false)
     {
         try
         {
             await ConfigureIndexesAsync(db.EnergyBookingSlots, db.EnergyReservations);
         }
-        catch
+        catch (MongoConnectionException ex) when (isDevelopment)
         {
-            // Catch and suppress errors if MongoDB is offline during startup
+            // In local offline development/testing, MongoDB instance may not be running yet.
+            // A clear diagnostic notice is logged so offline test tools and builds do not crash.
+            Console.WriteLine($"[MongoDbIndexConfigurator] Notice: MongoDB is offline ({ex.Message}). Startup unique index creation skipped.");
+        }
+        catch (TimeoutException ex) when (isDevelopment)
+        {
+            Console.WriteLine($"[MongoDbIndexConfigurator] Notice: MongoDB connection timed out ({ex.Message}). Startup unique index creation skipped.");
+        }
+        catch (Exception ex)
+        {
+            // If MongoDB is connected and index creation fails (e.g. duplicate existing data, invalid options),
+            // or if in non-development environment, do NOT swallow the failure!
+            Console.Error.WriteLine($"[MongoDbIndexConfigurator] ERROR: Failed to configure database unique indexes: {ex.Message}");
+            throw new InvalidOperationException($"Critical startup failure: Failed to configure required database unique indexes for Component 2: {ex.Message}", ex);
         }
     }
 

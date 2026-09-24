@@ -1543,6 +1543,161 @@ namespace MicrogridApi.Tests.Unit
             Assert.Equal(2, callCount); // Verified collision retry executed
         }
 
+        [Fact]
+        public async Task Create_ReservationIdCollision_RetryExhausted_ReturnsConflict()
+        {
+            _prosumers.Add(new Prosumer { Nic = "123456789V", Status = "active" });
+            _stations.Add(new MicrogridNode { NodeId = "ST-1", Status = "active" });
+            var slotDate = DateTime.UtcNow.Date.AddDays(2);
+            var slot = new EnergyBookingSlot
+            {
+                SlotId = "SLOT-RETRY-FAIL",
+                StationId = "ST-1",
+                Date = slotDate,
+                StartTime = "10:00",
+                EndTime = "12:00",
+                Capacity = 5,
+                Availability = 5,
+                Status = "Available"
+            };
+            _slots.Add(slot);
+
+            var duplicateKeyException = CreateDuplicateKeyException();
+
+            int callCount = 0;
+            _mockReservationsCollection
+                .Setup(c => c.InsertOneAsync(
+                    It.IsAny<EnergyReservation>(),
+                    It.IsAny<InsertOneOptions>(),
+                    It.IsAny<CancellationToken>()))
+                .Returns((EnergyReservation r, InsertOneOptions opt, CancellationToken ct) =>
+                {
+                    callCount++;
+                    throw duplicateKeyException; // Fails all retry attempts
+                });
+
+            var req = new CreateReservationRequest
+            {
+                ProsumerNic = "123456789V",
+                StationId = "ST-1",
+                SlotId = "SLOT-RETRY-FAIL"
+            };
+
+            var result = await _controller.Create(req);
+            var conflictResult = Assert.IsType<ConflictObjectResult>(result);
+            Assert.Equal(409, conflictResult.StatusCode);
+            Assert.Equal(3, callCount); // Verified all 3 attempts executed and exited cleanly without 500
+
+            // Verify slot availability was safely compensated back to 5
+            Assert.Equal(5, slot.Availability);
+        }
+
+        [Fact]
+        public async Task Create_SlotScheduleConcurrentlyChanged_ReturnsBadRequest()
+        {
+            _prosumers.Add(new Prosumer { Nic = "123456789V", Status = "active" });
+            _stations.Add(new MicrogridNode { NodeId = "ST-1", Status = "active" });
+            var slotDate = DateTime.UtcNow.Date.AddDays(2);
+            _slots.Add(new EnergyBookingSlot
+            {
+                SlotId = "SLOT-RACE",
+                StationId = "ST-1",
+                Date = slotDate,
+                StartTime = "10:00",
+                EndTime = "12:00",
+                Capacity = 5,
+                Availability = 5,
+                Status = "Available"
+            });
+
+            // Simulate FindOneAndUpdateAsync matching 0 documents because schedule changed or availability decremented
+            _mockSlotsCollection
+                .Setup(c => c.FindOneAndUpdateAsync(
+                    It.IsAny<FilterDefinition<EnergyBookingSlot>>(),
+                    It.IsAny<UpdateDefinition<EnergyBookingSlot>>(),
+                    It.IsAny<FindOneAndUpdateOptions<EnergyBookingSlot, EnergyBookingSlot>>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync((EnergyBookingSlot)null!);
+
+            var req = new CreateReservationRequest
+            {
+                ProsumerNic = "123456789V",
+                StationId = "ST-1",
+                SlotId = "SLOT-RACE"
+            };
+
+            var result = await _controller.Create(req);
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+            Assert.Equal(400, badRequest.StatusCode);
+        }
+
+        [Fact]
+        public async Task Update_OldSlotReleaseFails_ReturnsStatusCode500()
+        {
+            var oldSlotTime = DateTime.UtcNow.AddHours(25);
+            var newSlotTime = DateTime.UtcNow.AddHours(30);
+
+            var oldSlot = new EnergyBookingSlot
+            {
+                Id = "slot-old-500",
+                SlotId = "SLOT-OLD-500",
+                StationId = "ST-1",
+                Date = oldSlotTime.Date,
+                StartTime = oldSlotTime.ToString("HH:mm"),
+                EndTime = oldSlotTime.AddHours(1).ToString("HH:mm"),
+                Capacity = 5,
+                Availability = 4,
+                Status = "Available"
+            };
+            var newSlot = new EnergyBookingSlot
+            {
+                Id = "slot-new-500",
+                SlotId = "SLOT-NEW-500",
+                StationId = "ST-1",
+                Date = newSlotTime.Date,
+                StartTime = newSlotTime.ToString("HH:mm"),
+                EndTime = newSlotTime.AddHours(1).ToString("HH:mm"),
+                Capacity = 5,
+                Availability = 5,
+                Status = "Available"
+            };
+            _slots.Add(oldSlot);
+            _slots.Add(newSlot);
+
+            var validResId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+            var reservation = new EnergyReservation
+            {
+                Id = validResId,
+                ReservationId = "RES-OLD-SLOT-FAIL",
+                ProsumerNic = "123456789V",
+                StationId = "ST-1",
+                SlotId = "SLOT-OLD-500",
+                Status = "Pending",
+                UpdatedAt = DateTime.UtcNow
+            };
+            _reservations.Add(reservation);
+
+            // Setup Step C: old slot UpdateOneAsync returns ModifiedCount == 0
+            _mockSlotsCollection
+                .Setup(c => c.UpdateOneAsync(
+                    It.Is<FilterDefinition<EnergyBookingSlot>>(f => true),
+                    It.IsAny<UpdateDefinition<EnergyBookingSlot>>(),
+                    It.IsAny<UpdateOptions>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new UpdateResult.Acknowledged(0, 0, null));
+
+            var req = new UpdateReservationRequest { StationId = "ST-1", SlotId = "SLOT-NEW-500" };
+            var result = await _controller.Update(validResId, req);
+
+            var serverError = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(500, serverError.StatusCode);
+
+            // New slot capacity remains decremented (new slot has the reservation)
+            Assert.Equal(4, newSlot.Availability);
+            // Reservation points to new slot
+            Assert.Equal("SLOT-NEW-500", reservation.SlotId);
+        }
+
         private static MongoWriteException CreateDuplicateKeyException()
         {
             var writeError = (WriteError)RuntimeHelpers.GetUninitializedObject(typeof(WriteError));

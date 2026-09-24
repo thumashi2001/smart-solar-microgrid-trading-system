@@ -1,6 +1,6 @@
 # Component 2: Energy Reservation & Slot Management — Authoritative API Contract
 
-**Document Version:** 2.1 (Phase 2B Hardened Baseline)  
+**Document Version:** 2.2 (Phase 2C Final Concurrency, Integrity & Startup Hardened)  
 **Target Branch:** `feature/viman-reservation-slots`  
 **API Framework:** ASP.NET Core 8.0 / C#  
 **Database:** MongoDB (`MongoDbContext`)  
@@ -456,6 +456,43 @@ If a request payload fails JSON deserialization or type binding, ASP.NET Core re
 
 *Client UI guideline:* React Web and Android Retrofit error handlers should first inspect `error.response.data.message`; if absent, inspect `error.response.data.title` or `error.response.data.errors`.
 
+### 8.3 Concurrency & Unique Key Collision Conflicts (`409 Conflict`)
+Returned when an operation cannot proceed due to optimistic concurrency collision or retry exhaustion on unique database constraints:
+- **Slot Concurrent Modification:**
+```json
+{
+  "message": "The slot was concurrently modified by another request. Please refresh and try again."
+}
+```
+- **Reservation Concurrent Modification / Cancellation:**
+```json
+{
+  "message": "The reservation was concurrently modified or cancelled. Please refresh and try again."
+}
+```
+- **Unique Key Retry Exhaustion (Slot or Reservation ID collision after 3 attempts):**
+```json
+{
+  "message": "Failed to create reservation due to a unique key collision. Please try again."
+}
+```
+
+### 8.4 Partial Operation Database Anomaly Errors (`500 Internal Server Error`)
+Returned when a multi-step operation partially succeeds but a dependent database update fails:
+- **Reservation Reschedule — Step C Old Slot Release Failure:**
+```json
+{
+  "message": "Reservation was updated to the new slot, but releasing capacity on the previous slot failed due to a database anomaly.",
+  "reservation": { ... }
+}
+```
+- **Reservation Cancellation — Slot Availability Restoration Failure:**
+```json
+{
+  "message": "Reservation was cancelled, but restoring slot availability failed due to a database anomaly."
+}
+```
+
 ---
 
 ## 9. Team Integration Contracts & Dependencies
@@ -503,9 +540,10 @@ Consequently, Component 2 does not fabricate or pretend that multi-document dist
 
 | Area | Challenge | Hardened Architectural Solution |
 | :--- | :--- | :--- |
-| **ID Collisions** | Probability-based short GUID collision risk on `SlotId` and `ReservationId`. | Configured database-level unique indexes (`ux_slotId`, `ux_reservationId`) via `MongoDbIndexConfigurator`. Insert loops implement a 3-attempt retry catching `ServerErrorCategory.DuplicateKey` before returning `409 Conflict`. |
-| **Booking vs Schedule Race** | Slot schedule altered by operator while prosumer creates reservation. | Atomic slot decrement (`FindOneAndUpdateAsync`) incorporates full slot schedule (`Date`, `StartTime`, `EndTime`, `StationId`, `Status == "Available"`). If schedule was modified, the decrement filter does not match and booking is rejected. |
+| **Startup Index Guarantees** | Unique indexes must exist before the API accepts incoming HTTP traffic. | `Program.cs` synchronously awaits `MongoDbIndexConfigurator.ConfigureIndexesAsync(mongoDb, app.Environment.IsDevelopment())` before `app.Run()`. Real index creation failures (e.g. duplicate keys) throw `InvalidOperationException` halting startup. Offline development connectivity gracefully logs diagnostic notices. |
+| **ID Collisions & Retry Exhaustion** | Short GUID collision risk on `SlotId` and `ReservationId`. | Configured database-level unique indexes (`ux_slotId`, `ux_reservationId`). Insert loops implement a 3-attempt collision retry catching `ServerErrorCategory.DuplicateKey`. If all 3 attempts collide, the loop cleanly terminates and returns `409 Conflict` (instead of escaping into generic 500 error handling), safely compensating slot availability. |
+| **Booking vs Schedule Race** | Operator modifies slot schedule while prosumer creates reservation. | Atomic slot decrement (`FindOneAndUpdateAsync`) incorporates full slot schedule (`Date`, `StartTime`, `EndTime`, `StationId`, `Status == "Available"`). Simultaneously, slot schedule updates in `SlotsController.Update` atomically verify `Availability == Capacity` and `UpdatedAt`. If an in-flight booking decrements availability, the schedule update is blocked and returns `409 Conflict`. |
 | **Concurrent Reservation Updates** | Stale reservation update overwrites concurrent modification or cancellation. | Reservation mutation uses optimistic concurrency filtering on `Id`, original `SlotId`, original `StationId`, `Status in ["Pending", "Approved"]`, and `UpdatedAt`. Returns `409 Conflict` on concurrent clash. |
-| **Dangerous Decrement Rollbacks** | Standard rollback sequence decrements availability belonging to a concurrent operation. | **Re-ordered exchange**: Step A reserves new slot (`-1`). Step B conditionally updates reservation document. If Step B fails, only new slot is restored (`+1`). Old slot was NEVER modified, completely eliminating decrement rollback risk! Step C releases old slot space (`+1`) only after reservation update is secured. |
-| **Slot Schedule TOCTOU Race** | Slot schedule update checks active reservations, then concurrent reservation is booked before slot update commits. | Slot schedule update employs optimistic timestamp locking, followed by a post-commit reservation check. If an active reservation was committed during the update window, the schedule modification is immediately reverted in MongoDB and rejected with `400 Bad Request`. |
-| **Cancellation Integrity** | Cancellation restores availability for wrong slot or reports success when restoration fails. | Cancellation filter atomically verifies expected `SlotId` and `UpdatedAt`. Restores availability specifically for the confirmed slot. If slot restoration update yields `ModifiedCount == 0`, returns `500 Internal Server Error` instead of a misleading `200 OK`. Only `"Pending"` and `"Approved"` states are cancellable. |
+| **Dangerous Decrement Rollbacks & Capacity Leaks** | Step C old-slot release fails, or rollback decrements availability belonging to concurrent bookings. | **Re-ordered exchange**: Step A reserves new slot (`-1`). Step B conditionally updates reservation document. If Step B fails, only new slot is restored (`+1`). Old slot was NEVER modified. Step C releases old slot space (`+1`) only after reservation update is secured. Step C explicitly verifies `oldSlotResult.ModifiedCount > 0`; if release fails, returns `500 Internal Server Error` with diagnostic details and preserved reservation, preventing untracked capacity leaks. |
+| **Slot Schedule Update Concurrency** | Unsafe post-check revert patterns can overwrite concurrent bookings or newer slot updates. | Eliminated the unsafe post-check `CountDocumentsAsync` and unconditional schedule revert. Schedule updates pre-validate active reservations (`CountDocumentsAsync == 0`) and require `Availability == Capacity`. The atomic MongoDB update filter requires `s.UpdatedAt == existingSlot.UpdatedAt` AND `s.Availability == existingSlot.Capacity`. If any concurrent booking occurs or timestamp changed, the update matches 0 documents and returns `409 Conflict`. No partial state is written and no dangerous rollback is ever needed. |
+| **Cancellation Integrity** | Cancellation restores availability for wrong slot or reports success when restoration fails. | Cancellation filter atomically verifies expected `SlotId` and `UpdatedAt`. Restores availability specifically for the confirmed slot (`Availability < Capacity`). If slot restoration update yields `ModifiedCount == 0`, returns `500 Internal Server Error` instead of a misleading `200 OK`. Only `"Pending"` and `"Approved"` states are cancellable. |

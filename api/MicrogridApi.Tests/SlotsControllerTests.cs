@@ -750,33 +750,47 @@ namespace MicrogridApi.Tests.Unit
         }
 
         [Fact]
-        public async Task Update_ActiveReservationCreatedDuringWindow_RevertsAndReturnsBadRequest()
+        public async Task Update_ActiveReservationExists_PreservesOriginalState()
         {
-            var slot = new EnergyBookingSlot { Id = "1", SlotId = "SLOT-1", Date = new DateTime(2026, 1, 1), StartTime = "09:00", EndTime = "10:00", Status = "Available" };
+            var slot = new EnergyBookingSlot { Id = "1", SlotId = "SLOT-1", Date = new DateTime(2026, 1, 1), StartTime = "09:00", EndTime = "10:00", Status = "Available", Capacity = 5, Availability = 4 };
             SetupSlot(slot);
 
-            // First call to CountDocumentsAsync returns 0 (pre-check passes)
-            // Second call to CountDocumentsAsync returns 1 (post-check detects active reservation created during window)
-            _mockReservationsCollection
-                .SetupSequence(c => c.CountDocumentsAsync(
-                    It.IsAny<FilterDefinition<EnergyReservation>>(),
-                    It.IsAny<CountOptions>(),
-                    It.IsAny<CancellationToken>()))
-                .ReturnsAsync(0)
-                .ReturnsAsync(1);
+            _reservations.Add(new EnergyReservation { SlotId = "SLOT-1", Status = "Pending" });
 
-            var req = new UpdateSlotRequest { StartTime = "11:00", EndTime = "12:00" };
+            var req = new UpdateSlotRequest { StartTime = "11:00", EndTime = "12:00", Status = "Unavailable" };
             var result = await _controller.Update("1", req);
 
             var badRequest = Assert.IsType<BadRequestObjectResult>(result);
             Assert.Equal(400, badRequest.StatusCode);
 
-            // Verify revert was called on the slots collection
+            // Verify slot update was never executed in MongoDB
             _mockSlotsCollection.Verify(c => c.UpdateOneAsync(
                 It.IsAny<FilterDefinition<EnergyBookingSlot>>(),
                 It.IsAny<UpdateDefinition<EnergyBookingSlot>>(),
                 It.IsAny<UpdateOptions>(),
-                It.IsAny<CancellationToken>()), Times.AtLeast(2));
+                It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Update_ConcurrentBooking_ReturnsConflict()
+        {
+            var slot = new EnergyBookingSlot { Id = "1", SlotId = "SLOT-1", Date = new DateTime(2026, 1, 1), StartTime = "09:00", EndTime = "10:00", Status = "Available", Capacity = 5, Availability = 5, UpdatedAt = DateTime.UtcNow };
+            SetupSlot(slot);
+
+            // Simulate concurrent booking or timestamp mismatch causing filter not to match
+            _mockSlotsCollection
+                .Setup(c => c.UpdateOneAsync(
+                    It.IsAny<FilterDefinition<EnergyBookingSlot>>(),
+                    It.IsAny<UpdateDefinition<EnergyBookingSlot>>(),
+                    It.IsAny<UpdateOptions>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new UpdateResult.Acknowledged(0, 0, null));
+
+            var req = new UpdateSlotRequest { StartTime = "11:00", EndTime = "12:00" };
+            var result = await _controller.Update("1", req);
+
+            var conflictResult = Assert.IsType<ConflictObjectResult>(result);
+            Assert.Equal(409, conflictResult.StatusCode);
         }
 
         [Fact]
@@ -816,6 +830,40 @@ namespace MicrogridApi.Tests.Unit
             var created = Assert.IsType<CreatedAtActionResult>(result);
             Assert.Equal(201, created.StatusCode);
             Assert.Equal(2, callCount); // Verified retry occurred
+        }
+
+        [Fact]
+        public async Task Create_SlotIdCollision_RetryExhausted_ReturnsConflict()
+        {
+            SetupStation(new MicrogridNode { NodeId = "ST-1", Status = "active" });
+
+            var duplicateKeyException = CreateDuplicateKeyException();
+
+            int callCount = 0;
+            _mockSlotsCollection
+                .Setup(c => c.InsertOneAsync(
+                    It.IsAny<EnergyBookingSlot>(),
+                    It.IsAny<InsertOneOptions>(),
+                    It.IsAny<CancellationToken>()))
+                .Returns((EnergyBookingSlot s, InsertOneOptions opt, CancellationToken ct) =>
+                {
+                    callCount++;
+                    throw duplicateKeyException; // Fails all 3 attempts
+                });
+
+            var req = new CreateSlotRequest
+            {
+                StationId = "ST-1",
+                Date = new DateTime(2026, 4, 1),
+                StartTime = "10:00",
+                EndTime = "11:00",
+                Capacity = 5
+            };
+
+            var result = await _controller.Create(req);
+            var conflictResult = Assert.IsType<ConflictObjectResult>(result);
+            Assert.Equal(409, conflictResult.StatusCode);
+            Assert.Equal(3, callCount); // Verified all 3 attempts ran without throwing 500
         }
 
         private static MongoWriteException CreateDuplicateKeyException()

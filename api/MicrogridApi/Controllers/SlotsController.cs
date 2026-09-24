@@ -2,7 +2,7 @@
 // File: SlotsController.cs
 // Component: Component 2 - Energy Reservation & Slot Management
 // Description: Manages energy booking slots, including schedule updates,
-//              concurrency safeguards, and status transitions.
+//              optimistic concurrency safeguards, and status transitions.
 // ============================================================================
 
 using Microsoft.AspNetCore.Mvc;
@@ -155,9 +155,11 @@ public class SlotsController : ControllerBase
                 createdSlot = newSlot;
                 break;
             }
-            catch (MongoWriteException ex) when (ex.WriteError.Category == ServerErrorCategory.DuplicateKey && attempt < maxRetries - 1)
+            catch (MongoWriteException ex) when (ex.WriteError.Category == ServerErrorCategory.DuplicateKey)
             {
-                // SlotId collision: retry with a newly generated SlotId
+                // Duplicate key detected:
+                // Attempts 0 and 1: continue loop to generate a fresh SlotId.
+                // Final attempt (attempt 2): loop exits cleanly with createdSlot == null to return 409 Conflict.
             }
         }
 
@@ -175,8 +177,10 @@ public class SlotsController : ControllerBase
 
     /// <summary>
     /// PUT: api/slots/{id}
-    /// Updates slot schedule and status using optimistic concurrency and active-reservation rollback.
+    /// Updates slot schedule and status using atomic optimistic concurrency.
     /// Strictly prevents updating Capacity and Availability.
+    /// Eliminates unsafe post-check and rollback patterns by atomically validating
+    /// availability and timestamp invariants during the update operation.
     /// </summary>
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, UpdateSlotRequest request)
@@ -243,11 +247,11 @@ public class SlotsController : ControllerBase
                 return BadRequest(new { message = "EndTime must be after StartTime." });
             }
 
-            // SAFEGUARD (Pre-check): Do not allow schedule changes if active reservations exist
+            // SAFEGUARD: Do not allow schedule changes if active reservations exist or capacity is consumed
             var activeReservationsExist = await _db.EnergyReservations
                 .CountDocumentsAsync(r => r.SlotId == existingSlot.SlotId && (r.Status == "Pending" || r.Status == "Approved")) > 0;
 
-            if (activeReservationsExist)
+            if (activeReservationsExist || existingSlot.Availability < existingSlot.Capacity)
             {
                 return BadRequest(new { message = "Cannot modify the slot schedule because active reservations exist for this slot." });
             }
@@ -270,11 +274,20 @@ public class SlotsController : ControllerBase
             updateDefinitionBuilder = updateDefinitionBuilder.Set(s => s.Status, request.Status);
         }
 
-        // Optimistic concurrency filter: ensures the slot was not modified concurrently
-        var slotFilter = Builders<EnergyBookingSlot>.Filter.And(
-            Builders<EnergyBookingSlot>.Filter.Eq(s => s.Id, id),
-            Builders<EnergyBookingSlot>.Filter.Eq(s => s.UpdatedAt, existingSlot.UpdatedAt)
+        // Optimistic concurrency filter:
+        // If schedule is changing, we atomically verify BOTH the timestamp (UpdatedAt) AND that Availability == Capacity,
+        // guaranteeing that no in-flight or concurrent booking has decremented slot availability during the update window.
+        // If only status is changing, we verify UpdatedAt.
+        var filterBuilder = Builders<EnergyBookingSlot>.Filter;
+        var slotFilter = filterBuilder.And(
+            filterBuilder.Eq(s => s.Id, id),
+            filterBuilder.Eq(s => s.UpdatedAt, existingSlot.UpdatedAt)
         );
+
+        if (scheduleChanging)
+        {
+            slotFilter &= filterBuilder.Eq(s => s.Availability, existingSlot.Capacity);
+        }
 
         var updateResult = await _db.EnergyBookingSlots.UpdateOneAsync(
             slotFilter,
@@ -283,29 +296,9 @@ public class SlotsController : ControllerBase
 
         if (updateResult.ModifiedCount == 0)
         {
+            // The slot was modified concurrently or a booking consumed availability in the race window.
+            // No partial state was written. Return 409 Conflict.
             return Conflict(new { message = "The slot was concurrently modified by another request. Please refresh and try again." });
-        }
-
-        // SAFEGUARD (Post-check): Verify that no active reservation was committed concurrently during the update window
-        if (scheduleChanging)
-        {
-            var postCheckActiveReservations = await _db.EnergyReservations
-                .CountDocumentsAsync(r => r.SlotId == existingSlot.SlotId && (r.Status == "Pending" || r.Status == "Approved")) > 0;
-
-            if (postCheckActiveReservations)
-            {
-                // Revert schedule change immediately to protect the active reservation from schedule corruption
-                await _db.EnergyBookingSlots.UpdateOneAsync(
-                    s => s.Id == id,
-                    Builders<EnergyBookingSlot>.Update
-                        .Set(s => s.Date, existingSlot.Date)
-                        .Set(s => s.StartTime, existingSlot.StartTime)
-                        .Set(s => s.EndTime, existingSlot.EndTime)
-                        .Set(s => s.UpdatedAt, DateTime.UtcNow)
-                );
-
-                return BadRequest(new { message = "Cannot modify the slot schedule because active reservations exist for this slot." });
-            }
         }
 
         existingSlot.Date = newDate;

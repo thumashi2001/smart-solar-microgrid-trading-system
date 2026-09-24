@@ -36,15 +36,9 @@ app.UseAuthorization();
 app.MapControllers();
 
 // Initialize unique indexes for EnergyBookingSlot (SlotId) and EnergyReservation (ReservationId)
-try
-{
-    var mongoDb = app.Services.GetRequiredService<MongoDbContext>();
-    _ = MongoDbIndexConfigurator.ConfigureIndexesAsync(mongoDb);
-}
-catch
-{
-    // Ignore if MongoDB is unavailable during startup
-}
+// Awaited properly before serving any incoming requests
+var mongoDb = app.Services.GetRequiredService<MongoDbContext>();
+await MongoDbIndexConfigurator.ConfigureIndexesAsync(mongoDb, app.Environment.IsDevelopment());
 
 app.Run();
 
