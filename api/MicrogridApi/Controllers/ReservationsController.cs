@@ -6,6 +6,7 @@
 // ============================================================================
 
 using Microsoft.AspNetCore.Mvc;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using MicrogridApi.Data;
 using MicrogridApi.Models;
@@ -51,6 +52,11 @@ public class ReservationsController : ControllerBase
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(string id)
     {
+        if (!ObjectId.TryParse(id, out _))
+        {
+            return NotFound(new { message = "Reservation not found." });
+        }
+
         var reservation = await _db.EnergyReservations
             .Find(r => r.Id == id)
             .FirstOrDefaultAsync();
@@ -84,6 +90,11 @@ public class ReservationsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create(CreateReservationRequest request)
     {
+        if (!MongoDbIndexConfigurator.IndexesVerified && !await MongoDbIndexConfigurator.EnsureIndexesVerifiedAsync(_db))
+        {
+            return StatusCode(503, new { message = "Database unique indexes have not been verified. Write operations are disabled until database readiness is established." });
+        }
+
         if (string.IsNullOrWhiteSpace(request.ProsumerNic) ||
             string.IsNullOrWhiteSpace(request.StationId) ||
             string.IsNullOrWhiteSpace(request.SlotId))
@@ -292,6 +303,9 @@ public class ReservationsController : ControllerBase
             return NotFound(new { message = "Reservation not found." });
         }
 
+        var originalSlotId = existingReservation.SlotId;
+        var originalStationId = existingReservation.StationId;
+
         // Terminal Reservation Update Protection:
         // Completed and Cancelled reservations must not be modified, and availability must not be exchanged.
         if (existingReservation.Status == "Cancelled")
@@ -397,6 +411,7 @@ public class ReservationsController : ControllerBase
         // This design completely eliminates dangerous decrement rollbacks on the old slot.
 
         // Step A: Decrement New Slot with atomic schedule verification
+        var decrementTimestamp = DateTime.UtcNow;
         var newSlotFilter = Builders<EnergyBookingSlot>.Filter.And(
             Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
             Builders<EnergyBookingSlot>.Filter.Eq(s => s.StationId, request.StationId),
@@ -409,7 +424,7 @@ public class ReservationsController : ControllerBase
 
         var newSlotUpdate = Builders<EnergyBookingSlot>.Update
             .Inc(s => s.Availability, -1)
-            .Set(s => s.UpdatedAt, DateTime.UtcNow);
+            .Set(s => s.UpdatedAt, decrementTimestamp);
 
         var updatedNewSlot = await _db.EnergyBookingSlots.FindOneAndUpdateAsync(
             newSlotFilter,
@@ -448,10 +463,11 @@ public class ReservationsController : ControllerBase
         }
         catch (Exception)
         {
-            // Compensate new slot decrement ONLY (safely restore +1)
+            // Correlated compensation: restore new slot availability ONLY if UpdatedAt is at/after our decrement
             var rollbackNewSlotFilter = Builders<EnergyBookingSlot>.Filter.And(
                 Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
-                Builders<EnergyBookingSlot>.Filter.Lt(s => s.Availability, newSlot.Capacity)
+                Builders<EnergyBookingSlot>.Filter.Lt(s => s.Availability, newSlot.Capacity),
+                Builders<EnergyBookingSlot>.Filter.Gte(s => s.UpdatedAt, decrementTimestamp)
             );
 
             await _db.EnergyBookingSlots.UpdateOneAsync(
@@ -464,10 +480,11 @@ public class ReservationsController : ControllerBase
         if (updatedReservation == null)
         {
             // Reservation was concurrently modified, cancelled, or completed.
-            // Safely compensate the new slot decrement (restore +1). Old slot was never touched.
+            // Correlated compensation: restore new slot availability ONLY if UpdatedAt is at/after our decrement
             var rollbackNewSlotFilter = Builders<EnergyBookingSlot>.Filter.And(
                 Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
-                Builders<EnergyBookingSlot>.Filter.Lt(s => s.Availability, newSlot.Capacity)
+                Builders<EnergyBookingSlot>.Filter.Lt(s => s.Availability, newSlot.Capacity),
+                Builders<EnergyBookingSlot>.Filter.Gte(s => s.UpdatedAt, decrementTimestamp)
             );
 
             await _db.EnergyBookingSlots.UpdateOneAsync(
@@ -492,8 +509,44 @@ public class ReservationsController : ControllerBase
 
         if (oldSlotResult.ModifiedCount == 0)
         {
-            // Do not report 200 OK success if old slot release failed.
-            // Return 500 Internal Server Error with diagnostic message and the updated reservation.
+            // Deterministic Compensation: Step C failed to release old slot space.
+            // Revert the reservation document back to the old slot to avoid an inconsistent partial-transfer state.
+            var revertResFilter = Builders<EnergyReservation>.Filter.And(
+                Builders<EnergyReservation>.Filter.Eq(r => r.Id, id),
+                Builders<EnergyReservation>.Filter.Eq(r => r.SlotId, request.SlotId)
+            );
+
+            var revertResUpdate = Builders<EnergyReservation>.Update
+                .Set(r => r.StationId, originalStationId)
+                .Set(r => r.SlotId, originalSlotId)
+                .Set(r => r.UpdatedAt, DateTime.UtcNow);
+
+            var revertResResult = await _db.EnergyReservations.UpdateOneAsync(revertResFilter, revertResUpdate);
+
+            if (revertResResult.ModifiedCount > 0)
+            {
+                existingReservation.SlotId = originalSlotId;
+                existingReservation.StationId = originalStationId;
+
+                // Reservation was safely reverted to the old slot. Now release the reserved space on the new slot.
+                var compensateNewSlotFilter = Builders<EnergyBookingSlot>.Filter.And(
+                    Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
+                    Builders<EnergyBookingSlot>.Filter.Lt(s => s.Availability, newSlot.Capacity),
+                    Builders<EnergyBookingSlot>.Filter.Gte(s => s.UpdatedAt, decrementTimestamp)
+                );
+
+                await _db.EnergyBookingSlots.UpdateOneAsync(
+                    compensateNewSlotFilter,
+                    Builders<EnergyBookingSlot>.Update.Inc(s => s.Availability, 1).Set(s => s.UpdatedAt, DateTime.UtcNow)
+                );
+
+                return StatusCode(500, new { 
+                    message = "Failed to release capacity on the previous slot. The reservation update was rolled back to its original slot.", 
+                    reservation = existingReservation 
+                });
+            }
+
+            // In the rare event the reservation revert itself failed, report the partial success anomaly with the updated reservation
             return StatusCode(500, new { 
                 message = "Reservation was updated to the new slot, but releasing capacity on the previous slot failed due to a database anomaly.", 
                 reservation = updatedReservation 

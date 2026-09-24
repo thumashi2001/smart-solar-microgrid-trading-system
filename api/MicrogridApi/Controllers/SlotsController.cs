@@ -6,6 +6,7 @@
 // ============================================================================
 
 using Microsoft.AspNetCore.Mvc;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using MicrogridApi.Data;
 using MicrogridApi.Models;
@@ -70,6 +71,11 @@ public class SlotsController : ControllerBase
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(string id)
     {
+        if (!ObjectId.TryParse(id, out _))
+        {
+            return NotFound(new { message = "Slot not found." });
+        }
+
         var slot = await _db.EnergyBookingSlots
             .Find(s => s.Id == id)
             .FirstOrDefaultAsync();
@@ -89,6 +95,11 @@ public class SlotsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create(CreateSlotRequest request)
     {
+        if (!MongoDbIndexConfigurator.IndexesVerified && !await MongoDbIndexConfigurator.EnsureIndexesVerifiedAsync(_db))
+        {
+            return StatusCode(503, new { message = "Database unique indexes have not been verified. Write operations are disabled until database readiness is established." });
+        }
+
         if (string.IsNullOrWhiteSpace(request.StationId))
         {
             return BadRequest(new { message = "StationId is required." });

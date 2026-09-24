@@ -13,6 +13,40 @@ namespace MicrogridApi.Data;
 public static class MongoDbIndexConfigurator
 {
     /// <summary>
+    /// Indicates whether database unique indexes have been successfully created or verified.
+    /// Acts as a startup and write readiness gate to ensure unverified states fail closed.
+    /// </summary>
+    public static bool IndexesVerified { get; private set; } = false;
+
+    /// <summary>
+    /// Resets or overrides verification state for isolated unit testing.
+    /// </summary>
+    public static void ResetVerificationStateForTesting(bool verified = false)
+    {
+        IndexesVerified = verified;
+    }
+
+    /// <summary>
+    /// Ensures unique indexes are verified before write operations proceed.
+    /// Returns true if verified, or false if database is unreachable.
+    /// </summary>
+    public static async Task<bool> EnsureIndexesVerifiedAsync(MongoDbContext db)
+    {
+        if (IndexesVerified) return true;
+
+        try
+        {
+            await ConfigureIndexesAsync(db.EnergyBookingSlots, db.EnergyReservations);
+            IndexesVerified = true;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Configures unique indexes on SlotId and ReservationId via MongoDbContext.
     /// Must be awaited during application startup before accepting traffic.
     /// If MongoDB is offline during local development, a diagnostic notice is logged.
@@ -74,5 +108,6 @@ public static class MongoDbIndexConfigurator
             new CreateIndexOptions { Unique = true, Name = "ux_reservationId" }
         );
         await reservationsCollection.Indexes.CreateOneAsync(resIndexModel);
+        IndexesVerified = true;
     }
 }

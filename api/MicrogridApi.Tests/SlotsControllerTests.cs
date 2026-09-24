@@ -54,6 +54,7 @@ namespace MicrogridApi.Tests.Unit
             dbField.SetValue(dbContext, mockDatabase.Object);
 
             _controller = new SlotsController(dbContext);
+            MongoDbIndexConfigurator.ResetVerificationStateForTesting(true);
 
             SetupReservationsQuery();
         }
@@ -864,6 +865,60 @@ namespace MicrogridApi.Tests.Unit
             var conflictResult = Assert.IsType<ConflictObjectResult>(result);
             Assert.Equal(409, conflictResult.StatusCode);
             Assert.Equal(3, callCount); // Verified all 3 attempts ran without throwing 500
+        }
+
+        [Fact]
+        public async Task GetById_MalformedObjectId_ReturnsNotFound()
+        {
+            var result = await _controller.GetById("malformed-hex-id-xyz");
+            var notFound = Assert.IsType<NotFoundObjectResult>(result);
+            Assert.Equal(404, notFound.StatusCode);
+        }
+
+        [Fact]
+        public async Task GetById_NonExistentValidObjectId_ReturnsNotFound()
+        {
+            SetupSlot(null);
+            var nonExistentId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+            var result = await _controller.GetById(nonExistentId);
+            var notFound = Assert.IsType<NotFoundObjectResult>(result);
+            Assert.Equal(404, notFound.StatusCode);
+        }
+
+        [Fact]
+        public async Task Update_MalformedObjectId_ReturnsNotFound()
+        {
+            SetupSlot(null);
+            var req = new UpdateSlotRequest { Status = "Unavailable" };
+            var result = await _controller.Update("invalid-id-xyz", req);
+            var notFound = Assert.IsType<NotFoundObjectResult>(result);
+            Assert.Equal(404, notFound.StatusCode);
+        }
+
+        [Fact]
+        public async Task Create_WhenIndexesNotVerifiedAndCannotConfigure_Returns503()
+        {
+            SetupStation(new MicrogridNode { NodeId = "ST-1", Status = "active" });
+            MongoDbIndexConfigurator.ResetVerificationStateForTesting(false);
+
+            // Mock index configuration failure
+            _mockSlotsCollection.Setup(c => c.Indexes).Throws(new InvalidOperationException("DB offline"));
+
+            var req = new CreateSlotRequest
+            {
+                StationId = "ST-1",
+                Date = new DateTime(2026, 4, 1),
+                StartTime = "10:00",
+                EndTime = "11:00",
+                Capacity = 5
+            };
+
+            var result = await _controller.Create(req);
+            var statusResult = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(503, statusResult.StatusCode);
+
+            // Restore state for other tests
+            MongoDbIndexConfigurator.ResetVerificationStateForTesting(true);
         }
 
         private static MongoWriteException CreateDuplicateKeyException()

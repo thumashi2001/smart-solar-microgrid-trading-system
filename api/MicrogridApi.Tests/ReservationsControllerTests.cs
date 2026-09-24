@@ -62,6 +62,7 @@ namespace MicrogridApi.Tests.Unit
             dbField.SetValue(dbContext, mockDatabase.Object);
 
             _controller = new ReservationsController(dbContext);
+            MongoDbIndexConfigurator.ResetVerificationStateForTesting(true);
 
             SetupCollections();
         }
@@ -210,6 +211,10 @@ namespace MicrogridApi.Tests.Unit
                         var slotId = rendered["SlotId"].AsString;
                         target = _slots.FirstOrDefault(s => s.SlotId == slotId);
                     }
+                    if (rendered.Contains("Availability") && rendered["Availability"].IsBsonDocument && rendered["Availability"].AsBsonDocument.Contains("$lt"))
+                    {
+                        checkLessThanCapacity = true;
+                    }
                     else if (rendered.Contains("$and"))
                     {
                         var andArray = rendered["$and"].AsBsonArray;
@@ -221,7 +226,7 @@ namespace MicrogridApi.Tests.Unit
                                 var slotId = doc["SlotId"].AsString;
                                 target = _slots.FirstOrDefault(s => s.SlotId == slotId);
                             }
-                            if (doc.Contains("Availability") && doc["Availability"].AsBsonDocument.Contains("$lt"))
+                            if (doc.Contains("Availability") && doc["Availability"].IsBsonDocument && doc["Availability"].AsBsonDocument.Contains("$lt"))
                             {
                                 checkLessThanCapacity = true;
                             }
@@ -305,7 +310,38 @@ namespace MicrogridApi.Tests.Unit
                     return Task.FromResult<ReplaceOneResult>(new ReplaceOneResult.Acknowledged(0, 0, null));
                 });
 
-            // EnergyReservations FindOneAndUpdateAsync (used in Delete/Cancel)
+            // EnergyReservations UpdateOneAsync (used in Step C deterministic rollback)
+            _mockReservationsCollection
+                .Setup(c => c.UpdateOneAsync(
+                    It.IsAny<FilterDefinition<EnergyReservation>>(),
+                    It.IsAny<UpdateDefinition<EnergyReservation>>(),
+                    It.IsAny<UpdateOptions>(),
+                    It.IsAny<CancellationToken>()))
+                .Returns((FilterDefinition<EnergyReservation> filter, UpdateDefinition<EnergyReservation> update, UpdateOptions options, CancellationToken ct) =>
+                {
+                    var serializerRegistry = BsonSerializer.SerializerRegistry;
+                    var documentSerializer = serializerRegistry.GetSerializer<EnergyReservation>();
+                    var rendered = filter.Render(new RenderArgs<EnergyReservation>(documentSerializer, serializerRegistry));
+
+                    var target = _reservations.FirstOrDefault(r => MatchesReservationFilter(rendered, r));
+                    if (target != null)
+                    {
+                        var updateDoc = update.Render(new RenderArgs<EnergyReservation>(documentSerializer, serializerRegistry)) as BsonDocument;
+                        if (updateDoc != null && updateDoc.Contains("$set"))
+                        {
+                            var setDoc = updateDoc["$set"].AsBsonDocument;
+                            if (setDoc.Contains("Status")) target.Status = setDoc["Status"].AsString;
+                            if (setDoc.Contains("SlotId")) target.SlotId = setDoc["SlotId"].AsString;
+                            if (setDoc.Contains("StationId")) target.StationId = setDoc["StationId"].AsString;
+                        }
+                        target.UpdatedAt = DateTime.UtcNow;
+                        return Task.FromResult<UpdateResult>(new UpdateResult.Acknowledged(1, 1, null));
+                    }
+
+                    return Task.FromResult<UpdateResult>(new UpdateResult.Acknowledged(0, 0, null));
+                });
+
+            // EnergyReservations FindOneAndUpdateAsync (used in Update/Delete with full predicate enforcement)
             _mockReservationsCollection
                 .Setup(c => c.FindOneAndUpdateAsync(
                     It.IsAny<FilterDefinition<EnergyReservation>>(),
@@ -318,26 +354,7 @@ namespace MicrogridApi.Tests.Unit
                     var documentSerializer = serializerRegistry.GetSerializer<EnergyReservation>();
                     var rendered = filter.Render(new RenderArgs<EnergyReservation>(documentSerializer, serializerRegistry));
 
-                    string? id = null;
-                    if (rendered.Contains("_id"))
-                    {
-                        id = rendered["_id"].IsObjectId ? rendered["_id"].AsObjectId.ToString() : rendered["_id"].AsString;
-                    }
-                    else if (rendered.Contains("$and"))
-                    {
-                        var andArray = rendered["$and"].AsBsonArray;
-                        foreach (var item in andArray)
-                        {
-                            var doc = item.AsBsonDocument;
-                            if (doc.Contains("_id"))
-                            {
-                                id = doc["_id"].IsObjectId ? doc["_id"].AsObjectId.ToString() : doc["_id"].AsString;
-                                break;
-                            }
-                        }
-                    }
-
-                    var target = _reservations.FirstOrDefault(r => r.Id == id);
+                    var target = _reservations.FirstOrDefault(r => MatchesReservationFilter(rendered, r));
                     if (target != null && target.Status != "Cancelled" && target.Status != "Completed")
                     {
                         var updateDoc = update.Render(new RenderArgs<EnergyReservation>(documentSerializer, serializerRegistry)) as BsonDocument;
@@ -1099,7 +1116,7 @@ namespace MicrogridApi.Tests.Unit
                 StartTime = "10:00",
                 EndTime = "11:00",
                 Capacity = 5,
-                Availability = 5, // Already at capacity
+                Availability = 4, // 1 space reserved
                 Status = "Available"
             };
             _slots.Add(slot);
@@ -1110,7 +1127,8 @@ namespace MicrogridApi.Tests.Unit
                 ReservationId = "RES-CAP",
                 StationId = "ST-1",
                 SlotId = "SLOT-CAP",
-                Status = "Approved"
+                Status = "Approved",
+                UpdatedAt = DateTime.UtcNow
             };
             _reservations.Add(reservation);
 
@@ -1118,8 +1136,44 @@ namespace MicrogridApi.Tests.Unit
 
             var okResult = Assert.IsType<OkObjectResult>(result);
             Assert.Equal(200, okResult.StatusCode);
-            Assert.Equal(5, slot.Availability); // Must not exceed capacity
+            Assert.Equal(5, slot.Availability); // Restores to capacity without exceeding
             Assert.Equal(5, slot.Capacity);
+        }
+
+        [Fact]
+        public async Task Delete_WhenSlotAlreadyAtCapacity_ReturnsStatusCode500()
+        {
+            var validId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+            var slotDate = DateTime.UtcNow.Date.AddDays(3);
+            var slot = new EnergyBookingSlot
+            {
+                SlotId = "SLOT-FULL-CAP",
+                StationId = "ST-1",
+                Date = slotDate,
+                StartTime = "10:00",
+                EndTime = "11:00",
+                Capacity = 5,
+                Availability = 5, // Already at full capacity (anomaly condition)
+                Status = "Available"
+            };
+            _slots.Add(slot);
+
+            var reservation = new EnergyReservation
+            {
+                Id = validId,
+                ReservationId = "RES-FULL-CAP",
+                StationId = "ST-1",
+                SlotId = "SLOT-FULL-CAP",
+                Status = "Pending",
+                UpdatedAt = DateTime.UtcNow
+            };
+            _reservations.Add(reservation);
+
+            var result = await _controller.Delete(validId);
+
+            var errorResult = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(500, errorResult.StatusCode);
+            Assert.Equal(5, slot.Availability); // Must remain at capacity
         }
 
         // =========================================================================
@@ -1142,9 +1196,10 @@ namespace MicrogridApi.Tests.Unit
         [Fact]
         public async Task GetById_ExistingId_ReturnsOk()
         {
-            _reservations.Add(new EnergyReservation { Id = "res-100", ReservationId = "RES-100" });
+            var validId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+            _reservations.Add(new EnergyReservation { Id = validId, ReservationId = "RES-100" });
 
-            var result = await _controller.GetById("res-100");
+            var result = await _controller.GetById(validId);
 
             var okResult = Assert.IsType<OkObjectResult>(result);
             var res = Assert.IsType<EnergyReservation>(okResult.Value);
@@ -1632,7 +1687,7 @@ namespace MicrogridApi.Tests.Unit
         }
 
         [Fact]
-        public async Task Update_OldSlotReleaseFails_ReturnsStatusCode500()
+        public async Task Update_OldSlotReleaseFails_RevertsReservationToOldSlot_AndCompensatesNewSlot()
         {
             var oldSlotTime = DateTime.UtcNow.AddHours(25);
             var newSlotTime = DateTime.UtcNow.AddHours(30);
@@ -1677,14 +1732,30 @@ namespace MicrogridApi.Tests.Unit
             };
             _reservations.Add(reservation);
 
-            // Setup Step C: old slot UpdateOneAsync returns ModifiedCount == 0
+            // Setup Step C: old slot UpdateOneAsync fails to release old slot space
             _mockSlotsCollection
                 .Setup(c => c.UpdateOneAsync(
-                    It.Is<FilterDefinition<EnergyBookingSlot>>(f => true),
+                    It.IsAny<FilterDefinition<EnergyBookingSlot>>(),
                     It.IsAny<UpdateDefinition<EnergyBookingSlot>>(),
                     It.IsAny<UpdateOptions>(),
                     It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new UpdateResult.Acknowledged(0, 0, null));
+                .Returns((FilterDefinition<EnergyBookingSlot> filter, UpdateDefinition<EnergyBookingSlot> update, UpdateOptions options, CancellationToken ct) =>
+                {
+                    var serializerRegistry = BsonSerializer.SerializerRegistry;
+                    var documentSerializer = serializerRegistry.GetSerializer<EnergyBookingSlot>();
+                    var rendered = filter.Render(new RenderArgs<EnergyBookingSlot>(documentSerializer, serializerRegistry));
+                    var slotId = rendered.Contains("SlotId") ? ExtractValueAsString(rendered["SlotId"]) : "";
+                    if (slotId == "SLOT-OLD-500")
+                    {
+                        return Task.FromResult<UpdateResult>(new UpdateResult.Acknowledged(0, 0, null));
+                    }
+                    if (slotId == "SLOT-NEW-500")
+                    {
+                        newSlot.Availability = Math.Min(newSlot.Capacity, newSlot.Availability + 1);
+                        return Task.FromResult<UpdateResult>(new UpdateResult.Acknowledged(1, 1, null));
+                    }
+                    return Task.FromResult<UpdateResult>(new UpdateResult.Acknowledged(1, 1, null));
+                });
 
             var req = new UpdateReservationRequest { StationId = "ST-1", SlotId = "SLOT-NEW-500" };
             var result = await _controller.Update(validResId, req);
@@ -1692,10 +1763,292 @@ namespace MicrogridApi.Tests.Unit
             var serverError = Assert.IsType<ObjectResult>(result);
             Assert.Equal(500, serverError.StatusCode);
 
-            // New slot capacity remains decremented (new slot has the reservation)
-            Assert.Equal(4, newSlot.Availability);
-            // Reservation points to new slot
-            Assert.Equal("SLOT-NEW-500", reservation.SlotId);
+            // Deterministic Compensation:
+            // 1. Reservation is safely rolled back to original slot
+            Assert.Equal("SLOT-OLD-500", reservation.SlotId);
+            // 2. New slot capacity is compensated back to 5 (no leak!)
+            Assert.Equal(5, newSlot.Availability);
+        }
+
+        // =========================================================================
+        // SECTION 10: MOCK PREDICATE ENFORCEMENT REGRESSION TESTS
+        // =========================================================================
+
+        [Fact]
+        public async Task MockReservations_WrongUpdatedAt_RejectsUpdate()
+        {
+            var validId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+            var reservation = new EnergyReservation
+            {
+                Id = validId,
+                ReservationId = "RES-PRED-1",
+                SlotId = "SLOT-1",
+                StationId = "ST-1",
+                Status = "Pending",
+                UpdatedAt = DateTime.UtcNow
+            };
+            _reservations.Add(reservation);
+
+            var filter = Builders<EnergyReservation>.Filter.And(
+                Builders<EnergyReservation>.Filter.Eq(r => r.Id, validId),
+                Builders<EnergyReservation>.Filter.Eq(r => r.SlotId, "SLOT-1"),
+                Builders<EnergyReservation>.Filter.Eq(r => r.StationId, "ST-1"),
+                Builders<EnergyReservation>.Filter.In(r => r.Status, new[] { "Pending", "Approved" }),
+                Builders<EnergyReservation>.Filter.Eq(r => r.UpdatedAt, DateTime.UtcNow.AddMinutes(-10)) // WRONG UpdatedAt
+            );
+            var update = Builders<EnergyReservation>.Update.Set(r => r.SlotId, "SLOT-2");
+
+            var result = await _mockReservationsCollection.Object.FindOneAndUpdateAsync(filter, update);
+
+            Assert.Null(result); // Mock data store correctly rejected update due to predicate failure!
+            Assert.Equal("SLOT-1", reservation.SlotId); // Unmodified!
+        }
+
+        [Fact]
+        public async Task MockReservations_WrongSlotId_RejectsUpdate()
+        {
+            var validId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+            var reservation = new EnergyReservation
+            {
+                Id = validId,
+                ReservationId = "RES-PRED-2",
+                SlotId = "SLOT-1",
+                StationId = "ST-1",
+                Status = "Pending",
+                UpdatedAt = DateTime.UtcNow
+            };
+            _reservations.Add(reservation);
+
+            var filter = Builders<EnergyReservation>.Filter.And(
+                Builders<EnergyReservation>.Filter.Eq(r => r.Id, validId),
+                Builders<EnergyReservation>.Filter.Eq(r => r.SlotId, "SLOT-WRONG"), // WRONG SlotId
+                Builders<EnergyReservation>.Filter.Eq(r => r.StationId, "ST-1"),
+                Builders<EnergyReservation>.Filter.In(r => r.Status, new[] { "Pending", "Approved" }),
+                Builders<EnergyReservation>.Filter.Eq(r => r.UpdatedAt, reservation.UpdatedAt)
+            );
+            var update = Builders<EnergyReservation>.Update.Set(r => r.SlotId, "SLOT-2");
+
+            var result = await _mockReservationsCollection.Object.FindOneAndUpdateAsync(filter, update);
+
+            Assert.Null(result);
+            Assert.Equal("SLOT-1", reservation.SlotId);
+        }
+
+        [Fact]
+        public async Task MockReservations_WrongStationId_RejectsUpdate()
+        {
+            var validId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+            var reservation = new EnergyReservation
+            {
+                Id = validId,
+                ReservationId = "RES-PRED-3",
+                SlotId = "SLOT-1",
+                StationId = "ST-1",
+                Status = "Pending",
+                UpdatedAt = DateTime.UtcNow
+            };
+            _reservations.Add(reservation);
+
+            var filter = Builders<EnergyReservation>.Filter.And(
+                Builders<EnergyReservation>.Filter.Eq(r => r.Id, validId),
+                Builders<EnergyReservation>.Filter.Eq(r => r.SlotId, "SLOT-1"),
+                Builders<EnergyReservation>.Filter.Eq(r => r.StationId, "ST-WRONG"), // WRONG StationId
+                Builders<EnergyReservation>.Filter.In(r => r.Status, new[] { "Pending", "Approved" }),
+                Builders<EnergyReservation>.Filter.Eq(r => r.UpdatedAt, reservation.UpdatedAt)
+            );
+            var update = Builders<EnergyReservation>.Update.Set(r => r.SlotId, "SLOT-2");
+
+            var result = await _mockReservationsCollection.Object.FindOneAndUpdateAsync(filter, update);
+
+            Assert.Null(result);
+            Assert.Equal("ST-1", reservation.StationId);
+        }
+
+        [Fact]
+        public async Task MockReservations_WrongStatus_RejectsUpdate()
+        {
+            var validId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+            var reservation = new EnergyReservation
+            {
+                Id = validId,
+                ReservationId = "RES-PRED-4",
+                SlotId = "SLOT-1",
+                StationId = "ST-1",
+                Status = "Cancelled", // WRONG status (cannot update Cancelled)
+                UpdatedAt = DateTime.UtcNow
+            };
+            _reservations.Add(reservation);
+
+            var filter = Builders<EnergyReservation>.Filter.And(
+                Builders<EnergyReservation>.Filter.Eq(r => r.Id, validId),
+                Builders<EnergyReservation>.Filter.Eq(r => r.SlotId, "SLOT-1"),
+                Builders<EnergyReservation>.Filter.Eq(r => r.StationId, "ST-1"),
+                Builders<EnergyReservation>.Filter.In(r => r.Status, new[] { "Pending", "Approved" }),
+                Builders<EnergyReservation>.Filter.Eq(r => r.UpdatedAt, reservation.UpdatedAt)
+            );
+            var update = Builders<EnergyReservation>.Update.Set(r => r.SlotId, "SLOT-2");
+
+            var result = await _mockReservationsCollection.Object.FindOneAndUpdateAsync(filter, update);
+
+            Assert.Null(result);
+            Assert.Equal("Cancelled", reservation.Status);
+        }
+
+        [Fact]
+        public async Task MockReservations_CorrectPredicates_AppliesUpdate()
+        {
+            var validId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+            var reservation = new EnergyReservation
+            {
+                Id = validId,
+                ReservationId = "RES-PRED-5",
+                SlotId = "SLOT-1",
+                StationId = "ST-1",
+                Status = "Pending",
+                UpdatedAt = DateTime.UtcNow
+            };
+            _reservations.Add(reservation);
+
+            var filter = Builders<EnergyReservation>.Filter.And(
+                Builders<EnergyReservation>.Filter.Eq(r => r.Id, validId),
+                Builders<EnergyReservation>.Filter.Eq(r => r.SlotId, "SLOT-1"),
+                Builders<EnergyReservation>.Filter.Eq(r => r.StationId, "ST-1"),
+                Builders<EnergyReservation>.Filter.In(r => r.Status, new[] { "Pending", "Approved" }),
+                Builders<EnergyReservation>.Filter.Eq(r => r.UpdatedAt, reservation.UpdatedAt)
+            );
+            var update = Builders<EnergyReservation>.Update.Set(r => r.SlotId, "SLOT-2");
+
+            var result = await _mockReservationsCollection.Object.FindOneAndUpdateAsync(filter, update);
+
+            Assert.NotNull(result);
+            Assert.Equal("SLOT-2", result.SlotId);
+            Assert.Equal("SLOT-2", reservation.SlotId);
+        }
+
+        [Fact]
+        public async Task GetById_MalformedObjectId_ReturnsNotFound()
+        {
+            var result = await _controller.GetById("not-a-valid-hex-id");
+            var notFound = Assert.IsType<NotFoundObjectResult>(result);
+            Assert.Equal(404, notFound.StatusCode);
+        }
+
+        [Fact]
+        public async Task GetById_NonExistentValidObjectId_ReturnsNotFound()
+        {
+            var nonExistentId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+            var result = await _controller.GetById(nonExistentId);
+            var notFound = Assert.IsType<NotFoundObjectResult>(result);
+            Assert.Equal(404, notFound.StatusCode);
+        }
+
+        [Fact]
+        public async Task Update_MalformedObjectId_ReturnsNotFound()
+        {
+            var req = new UpdateReservationRequest { StationId = "ST-1", SlotId = "SLOT-1" };
+            var result = await _controller.Update("malformed-id-123", req);
+            var notFound = Assert.IsType<NotFoundObjectResult>(result);
+            Assert.Equal(404, notFound.StatusCode);
+        }
+
+        [Fact]
+        public async Task Delete_MalformedObjectId_ReturnsNotFound()
+        {
+            var result = await _controller.Delete("invalid-mongo-id-xyz");
+            var notFound = Assert.IsType<NotFoundObjectResult>(result);
+            Assert.Equal(404, notFound.StatusCode);
+        }
+
+        private static string ExtractValueAsString(BsonValue val)
+        {
+            if (val.IsBsonDocument && val.AsBsonDocument.Contains("$eq"))
+            {
+                val = val["$eq"];
+            }
+            if (val.IsObjectId) return val.AsObjectId.ToString();
+            if (val.IsString) return val.AsString;
+            return val.ToString() ?? "";
+        }
+
+        private static bool MatchesReservationFilter(BsonDocument rendered, EnergyReservation r)
+        {
+            var conditions = new List<BsonDocument>();
+            if (rendered.Contains("$and"))
+            {
+                foreach (var item in rendered["$and"].AsBsonArray)
+                {
+                    if (item.IsBsonDocument)
+                        conditions.Add(item.AsBsonDocument);
+                }
+            }
+            else
+            {
+                conditions.Add(rendered);
+            }
+
+            foreach (var cond in conditions)
+            {
+                foreach (var elem in cond.Elements)
+                {
+                    if (elem.Name == "_id")
+                    {
+                        var idStr = ExtractValueAsString(elem.Value);
+                        if (r.Id != idStr) return false;
+                    }
+                    else if (elem.Name == "SlotId")
+                    {
+                        var slotIdStr = ExtractValueAsString(elem.Value);
+                        if (r.SlotId != slotIdStr) return false;
+                    }
+                    else if (elem.Name == "StationId")
+                    {
+                        var stationIdStr = ExtractValueAsString(elem.Value);
+                        if (r.StationId != stationIdStr) return false;
+                    }
+                    else if (elem.Name == "Status")
+                    {
+                        if (elem.Value.IsBsonDocument && elem.Value.AsBsonDocument.Contains("$in"))
+                        {
+                            var inArray = elem.Value.AsBsonDocument["$in"].AsBsonArray;
+                            var match = inArray.Any(val => val.AsString == r.Status);
+                            if (!match) return false;
+                        }
+                        else if (elem.Value.IsString)
+                        {
+                            if (r.Status != elem.Value.AsString) return false;
+                        }
+                    }
+                    else if (elem.Name == "UpdatedAt")
+                    {
+                        var val = elem.Value;
+                        if (val.IsBsonDocument && val.AsBsonDocument.Contains("$eq"))
+                        {
+                            val = val["$eq"];
+                        }
+
+                        DateTime expectedTime;
+                        if (val.IsBsonDateTime)
+                        {
+                            expectedTime = val.AsBsonDateTime.ToUniversalTime();
+                        }
+                        else if (val.IsString && DateTime.TryParse(val.AsString, out var parsed))
+                        {
+                            expectedTime = parsed.ToUniversalTime();
+                        }
+                        else
+                        {
+                            continue;
+                        }
+
+                        if (Math.Abs((r.UpdatedAt - expectedTime).TotalMilliseconds) > 10)
+                        {
+                            return false;
+                        }
+                    }
+                }
+            }
+
+            return true;
         }
 
         private static MongoWriteException CreateDuplicateKeyException()

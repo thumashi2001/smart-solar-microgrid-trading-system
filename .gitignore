@@ -30,3 +30,6 @@ api/MicrogridApi/appsettings.Development.json
 
 # ===== Test Output =====
 TestResults/
+*.trx
+*.coverage
+*.coveragexml

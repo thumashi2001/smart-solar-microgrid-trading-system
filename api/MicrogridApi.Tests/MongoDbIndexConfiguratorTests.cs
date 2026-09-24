@@ -176,5 +176,55 @@ namespace MicrogridApi.Tests.Unit
 
             Assert.Contains("Critical startup failure", ex.Message);
         }
+
+        [Fact]
+        public async Task EnsureIndexesVerifiedAsync_WhenAlreadyVerified_ReturnsTrueImmediately()
+        {
+            MongoDbIndexConfigurator.ResetVerificationStateForTesting(true);
+            Assert.True(MongoDbIndexConfigurator.IndexesVerified);
+
+            var dbContext = (MongoDbContext)RuntimeHelpers.GetUninitializedObject(typeof(MongoDbContext));
+            var result = await MongoDbIndexConfigurator.EnsureIndexesVerifiedAsync(dbContext);
+
+            Assert.True(result);
+            Assert.True(MongoDbIndexConfigurator.IndexesVerified);
+        }
+
+        [Fact]
+        public async Task EnsureIndexesVerifiedAsync_WhenUnverifiedAndDatabaseFails_ReturnsFalse()
+        {
+            MongoDbIndexConfigurator.ResetVerificationStateForTesting(false);
+            Assert.False(MongoDbIndexConfigurator.IndexesVerified);
+
+            var mockSlotsIndexManager = new Mock<IMongoIndexManager<EnergyBookingSlot>>();
+            mockSlotsIndexManager
+                .Setup(m => m.CreateOneAsync(
+                    It.IsAny<CreateIndexModel<EnergyBookingSlot>>(),
+                    It.IsAny<CreateOneIndexOptions>(),
+                    It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new MongoConnectionException(new MongoDB.Driver.Core.Connections.ConnectionId(new MongoDB.Driver.Core.Servers.ServerId(new MongoDB.Driver.Core.Clusters.ClusterId(), new System.Net.DnsEndPoint("localhost", 27017))), "Offline"));
+
+            var mockSlotsCollection = new Mock<IMongoCollection<EnergyBookingSlot>>();
+            mockSlotsCollection.Setup(c => c.Indexes).Returns(mockSlotsIndexManager.Object);
+
+            var mockReservationsCollection = new Mock<IMongoCollection<EnergyReservation>>();
+
+            var mockDatabase = new Mock<IMongoDatabase>();
+            mockDatabase
+                .Setup(d => d.GetCollection<EnergyBookingSlot>("energyBookingSlots", It.IsAny<MongoCollectionSettings>()))
+                .Returns(mockSlotsCollection.Object);
+            mockDatabase
+                .Setup(d => d.GetCollection<EnergyReservation>("energyReservation", It.IsAny<MongoCollectionSettings>()))
+                .Returns(mockReservationsCollection.Object);
+
+            var dbContext = (MongoDbContext)RuntimeHelpers.GetUninitializedObject(typeof(MongoDbContext));
+            var dbField = typeof(MongoDbContext).GetField("_database", BindingFlags.NonPublic | BindingFlags.Instance);
+            dbField!.SetValue(dbContext, mockDatabase.Object);
+
+            var result = await MongoDbIndexConfigurator.EnsureIndexesVerifiedAsync(dbContext);
+
+            Assert.False(result);
+            Assert.False(MongoDbIndexConfigurator.IndexesVerified);
+        }
     }
 }
