@@ -1,3 +1,10 @@
+// ============================================================================
+// File: ReservationsController.cs
+// Component: Component 2 - Energy Reservation & Slot Management
+// Description: Manages energy booking reservations, including concurrency controls,
+//              atomic availability exchange, duplicate key retries, and cancellation integrity.
+// ============================================================================
+
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
 using MicrogridApi.Data;
@@ -12,13 +19,21 @@ public class ReservationsController : ControllerBase
 {
     private readonly MongoDbContext _db;
 
+    // AUTHORIZATION CONTRACT:
+    // Prosumers may create reservations and view/modify/cancel only their own reservations.
+    // ProsumerNic ownership must be verified against authenticated claims once Component 1 JWT is active.
+    // Backoffice and GridOperator roles have elevated administrative access to all reservations.
+    // Integration Hook: Endpoints will be annotated with [Authorize] once Component 1 delivers the shared JWT middleware.
+
     public ReservationsController(MongoDbContext db)
     {
         _db = db;
     }
 
-    // GET: api/reservations
-    // Returns all reservations.
+    /// <summary>
+    /// GET: api/reservations
+    /// Returns all reservations.
+    /// </summary>
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
@@ -29,8 +44,10 @@ public class ReservationsController : ControllerBase
         return Ok(reservations);
     }
 
-    // GET: api/reservations/{id}
-    // Returns one reservation using its MongoDB ID.
+    /// <summary>
+    /// GET: api/reservations/{id}
+    /// Returns one reservation using its MongoDB ID.
+    /// </summary>
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(string id)
     {
@@ -46,8 +63,10 @@ public class ReservationsController : ControllerBase
         return Ok(reservation);
     }
 
-    // GET: api/reservations/history/{prosumerNic}
-    // Returns reservation history for a prosumer.
+    /// <summary>
+    /// GET: api/reservations/history/{prosumerNic}
+    /// Returns reservation history for a prosumer.
+    /// </summary>
     [HttpGet("history/{prosumerNic}")]
     public async Task<IActionResult> GetHistory(string prosumerNic)
     {
@@ -58,8 +77,10 @@ public class ReservationsController : ControllerBase
         return Ok(reservations);
     }
 
-    // POST: api/reservations
-    // Creates a new reservation.
+    /// <summary>
+    /// POST: api/reservations
+    /// Creates a new reservation with atomic schedule validation, collision retry, and safe compensation.
+    /// </summary>
     [HttpPost]
     public async Task<IActionResult> Create(CreateReservationRequest request)
     {
@@ -145,13 +166,17 @@ public class ReservationsController : ControllerBase
             return BadRequest(new { message = "Reservation must be scheduled within 7 days from now." });
         }
 
-        // 5. Concurrency protection: Atomically check availability > 0 and decrement by 1.
-        // We use FindOneAndUpdateAsync to ensure that even if multiple requests arrive simultaneously,
-        // only one can consume a given availability unit. Capacity remains untouched.
+        // 5. Concurrency protection: Atomically validate slot schedule and decrement availability by 1.
+        // We include StationId, Date, StartTime, EndTime, and Status in the atomic filter to prevent
+        // booking if an operator concurrently altered the slot schedule.
         var filter = Builders<EnergyBookingSlot>.Filter.And(
             Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
-            Builders<EnergyBookingSlot>.Filter.Gt(s => s.Availability, 0),
-            Builders<EnergyBookingSlot>.Filter.Eq(s => s.Status, "Available")
+            Builders<EnergyBookingSlot>.Filter.Eq(s => s.StationId, request.StationId),
+            Builders<EnergyBookingSlot>.Filter.Eq(s => s.Date, slot.Date),
+            Builders<EnergyBookingSlot>.Filter.Eq(s => s.StartTime, slot.StartTime),
+            Builders<EnergyBookingSlot>.Filter.Eq(s => s.EndTime, slot.EndTime),
+            Builders<EnergyBookingSlot>.Filter.Eq(s => s.Status, "Available"),
+            Builders<EnergyBookingSlot>.Filter.Gt(s => s.Availability, 0)
         );
 
         var update = Builders<EnergyBookingSlot>.Update
@@ -167,31 +192,58 @@ public class ReservationsController : ControllerBase
 
         if (updatedSlot == null)
         {
-            // If updatedSlot is null, it means either the slot was deleted OR availability dropped to 0 concurrently.
-            return BadRequest(new { message = "Slot has no remaining availability or could not be booked due to high concurrency." });
+            return BadRequest(new { message = "Slot has no remaining availability or schedule changed concurrently." });
         }
 
-        // 6. Create Reservation
-        var newReservation = new EnergyReservation
-        {
-            ReservationId = $"RES-{Guid.NewGuid().ToString("N")[..8].ToUpper()}",
-            ProsumerNic = request.ProsumerNic,
-            StationId = request.StationId,
-            SlotId = request.SlotId,
-            Status = "Pending",
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-            TransactionReference = ""
-        };
+        // 6. Create Reservation with collision-resilient insertion loop
+        const int maxRetries = 3;
+        EnergyReservation? createdReservation = null;
 
-        try
+        for (int attempt = 0; attempt < maxRetries; attempt++)
         {
-            await _db.EnergyReservations.InsertOneAsync(newReservation);
+            var newReservation = new EnergyReservation
+            {
+                ReservationId = $"RES-{Guid.NewGuid().ToString("N")[..8].ToUpper()}",
+                ProsumerNic = request.ProsumerNic,
+                StationId = request.StationId,
+                SlotId = request.SlotId,
+                Status = "Pending",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+                TransactionReference = ""
+            };
+
+            try
+            {
+                await _db.EnergyReservations.InsertOneAsync(newReservation);
+                createdReservation = newReservation;
+                break;
+            }
+            catch (MongoWriteException ex) when (ex.WriteError.Category == ServerErrorCategory.DuplicateKey && attempt < maxRetries - 1)
+            {
+                // Unique ReservationId collision: retry with a newly generated ID
+            }
+            catch (Exception)
+            {
+                // Concurrency-safe compensation: restore availability ONLY if availability < slot.Capacity
+                // to preserve the invariant: 0 <= Availability <= Capacity
+                var rollbackFilter = Builders<EnergyBookingSlot>.Filter.And(
+                    Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
+                    Builders<EnergyBookingSlot>.Filter.Lt(s => s.Availability, slot.Capacity)
+                );
+
+                var rollbackUpdate = Builders<EnergyBookingSlot>.Update
+                    .Inc(s => s.Availability, 1)
+                    .Set(s => s.UpdatedAt, DateTime.UtcNow);
+
+                await _db.EnergyBookingSlots.UpdateOneAsync(rollbackFilter, rollbackUpdate);
+                throw;
+            }
         }
-        catch (Exception)
+
+        if (createdReservation == null)
         {
-            // Concurrency-safe compensation: restore availability ONLY if availability < slot.Capacity
-            // to preserve the invariant: 0 <= Availability <= Capacity
+            // All retry attempts encountered duplicate keys: compensate slot availability
             var rollbackFilter = Builders<EnergyBookingSlot>.Filter.And(
                 Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
                 Builders<EnergyBookingSlot>.Filter.Lt(s => s.Availability, slot.Capacity)
@@ -200,21 +252,24 @@ public class ReservationsController : ControllerBase
             var rollbackUpdate = Builders<EnergyBookingSlot>.Update
                 .Inc(s => s.Availability, 1)
                 .Set(s => s.UpdatedAt, DateTime.UtcNow);
-            
+
             await _db.EnergyBookingSlots.UpdateOneAsync(rollbackFilter, rollbackUpdate);
-            
-            throw; // Re-throw to return 500 error after rollback
+
+            return Conflict(new { message = "Failed to create reservation due to an ID collision. Please try again." });
         }
 
         return CreatedAtAction(
             nameof(GetById),
-            new { id = newReservation.Id },
-            newReservation
+            new { id = createdReservation.Id },
+            createdReservation
         );
     }
 
-    // PUT: api/reservations/{id}
-    // Updates an existing reservation.
+    /// <summary>
+    /// PUT: api/reservations/{id}
+    /// Updates an existing reservation using optimistic concurrency and safe two-phase availability exchange.
+    /// Eliminates dangerous decrement rollbacks by updating reservation state before releasing old slot space.
+    /// </summary>
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, UpdateReservationRequest request)
     {
@@ -330,16 +385,23 @@ public class ReservationsController : ControllerBase
             return BadRequest(new { message = "New slot must be scheduled within 7 days from now." });
         }
 
-        // 5. Atomic Availability Exchange
-        // Since we are not using MongoDB multi-document transactions (standalone assumption),
-        // we use a safe sequence: decrement new slot -> increment old slot -> update reservation.
-        // If anything fails, we roll back the previous steps.
+        // 5. Atomic Availability Exchange:
+        // Re-ordered operation sequence:
+        //   Step A: Atomically reserve new slot space.
+        //   Step B: Optimistically update reservation document (verifying original state & timestamp).
+        //           If reservation update fails, compensate ONLY new slot (+1). Old slot was never touched!
+        //   Step C: Release old slot space (+1).
+        // This design completely eliminates dangerous decrement rollbacks on the old slot.
 
-        // Step A: Decrement New Slot
+        // Step A: Decrement New Slot with atomic schedule verification
         var newSlotFilter = Builders<EnergyBookingSlot>.Filter.And(
             Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
-            Builders<EnergyBookingSlot>.Filter.Gt(s => s.Availability, 0),
-            Builders<EnergyBookingSlot>.Filter.Eq(s => s.Status, "Available")
+            Builders<EnergyBookingSlot>.Filter.Eq(s => s.StationId, request.StationId),
+            Builders<EnergyBookingSlot>.Filter.Eq(s => s.Date, newSlot.Date),
+            Builders<EnergyBookingSlot>.Filter.Eq(s => s.StartTime, newSlot.StartTime),
+            Builders<EnergyBookingSlot>.Filter.Eq(s => s.EndTime, newSlot.EndTime),
+            Builders<EnergyBookingSlot>.Filter.Eq(s => s.Status, "Available"),
+            Builders<EnergyBookingSlot>.Filter.Gt(s => s.Availability, 0)
         );
 
         var newSlotUpdate = Builders<EnergyBookingSlot>.Update
@@ -347,52 +409,43 @@ public class ReservationsController : ControllerBase
             .Set(s => s.UpdatedAt, DateTime.UtcNow);
 
         var updatedNewSlot = await _db.EnergyBookingSlots.FindOneAndUpdateAsync(
-            newSlotFilter, 
-            newSlotUpdate, 
+            newSlotFilter,
+            newSlotUpdate,
             new FindOneAndUpdateOptions<EnergyBookingSlot> { ReturnDocument = ReturnDocument.After }
         );
 
         if (updatedNewSlot == null)
         {
-            return BadRequest(new { message = "New slot has no remaining availability or could not be booked due to concurrency." });
+            return BadRequest(new { message = "New slot has no remaining availability or schedule changed concurrently." });
         }
 
-        // Step B: Increment Old Slot
+        // Step B: Optimistic Conditional Update on Reservation Document
+        var reservationFilter = Builders<EnergyReservation>.Filter.And(
+            Builders<EnergyReservation>.Filter.Eq(r => r.Id, id),
+            Builders<EnergyReservation>.Filter.Eq(r => r.SlotId, existingReservation.SlotId),
+            Builders<EnergyReservation>.Filter.Eq(r => r.StationId, existingReservation.StationId),
+            Builders<EnergyReservation>.Filter.In(r => r.Status, new[] { "Pending", "Approved" }),
+            Builders<EnergyReservation>.Filter.Eq(r => r.UpdatedAt, existingReservation.UpdatedAt)
+        );
+
+        var reservationUpdate = Builders<EnergyReservation>.Update
+            .Set(r => r.StationId, request.StationId)
+            .Set(r => r.SlotId, request.SlotId)
+            .Set(r => r.UpdatedAt, DateTime.UtcNow);
+
+        EnergyReservation? updatedReservation;
+
         try
         {
-            var oldSlotFilter = Builders<EnergyBookingSlot>.Filter.And(
-                Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, currentSlot.SlotId),
-                Builders<EnergyBookingSlot>.Filter.Lt(s => s.Availability, currentSlot.Capacity)
+            updatedReservation = await _db.EnergyReservations.FindOneAndUpdateAsync(
+                reservationFilter,
+                reservationUpdate,
+                new FindOneAndUpdateOptions<EnergyReservation> { ReturnDocument = ReturnDocument.After }
             );
-
-            var oldSlotUpdate = Builders<EnergyBookingSlot>.Update
-                .Inc(s => s.Availability, 1)
-                .Set(s => s.UpdatedAt, DateTime.UtcNow);
-
-            var oldSlotResult = await _db.EnergyBookingSlots.UpdateOneAsync(
-                oldSlotFilter,
-                oldSlotUpdate
-            );
-
-            if (oldSlotResult.ModifiedCount == 0)
-            {
-                // The old slot was not found/modified or already at capacity.
-                // We must safely rollback the new slot decrement conditional on Availability < Capacity.
-                var rollbackNewSlotFilter = Builders<EnergyBookingSlot>.Filter.And(
-                    Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
-                    Builders<EnergyBookingSlot>.Filter.Lt(s => s.Availability, newSlot.Capacity)
-                );
-
-                await _db.EnergyBookingSlots.UpdateOneAsync(
-                    rollbackNewSlotFilter,
-                    Builders<EnergyBookingSlot>.Update.Inc(s => s.Availability, 1).Set(s => s.UpdatedAt, DateTime.UtcNow)
-                );
-                return BadRequest(new { message = "Failed to update current slot availability." });
-            }
         }
         catch (Exception)
         {
-            // Rollback New Slot decrement safely
+            // Compensate new slot decrement ONLY (safely restore +1)
             var rollbackNewSlotFilter = Builders<EnergyBookingSlot>.Filter.And(
                 Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
                 Builders<EnergyBookingSlot>.Filter.Lt(s => s.Availability, newSlot.Capacity)
@@ -405,23 +458,10 @@ public class ReservationsController : ControllerBase
             throw;
         }
 
-        // Step C: Update Reservation
-        existingReservation.StationId = request.StationId;
-        existingReservation.SlotId = request.SlotId;
-        existingReservation.UpdatedAt = DateTime.UtcNow;
-        // Status remains unchanged
-
-        try
+        if (updatedReservation == null)
         {
-            await _db.EnergyReservations.ReplaceOneAsync(
-                r => r.Id == id,
-                existingReservation
-            );
-        }
-        catch (Exception)
-        {
-            // Rollback both slots safely
-            // 1. Rollback new slot (safely add 1 back ONLY if Availability < Capacity)
+            // Reservation was concurrently modified, cancelled, or completed.
+            // Safely compensate the new slot decrement (restore +1). Old slot was never touched.
             var rollbackNewSlotFilter = Builders<EnergyBookingSlot>.Filter.And(
                 Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, request.SlotId),
                 Builders<EnergyBookingSlot>.Filter.Lt(s => s.Availability, newSlot.Capacity)
@@ -431,25 +471,29 @@ public class ReservationsController : ControllerBase
                 rollbackNewSlotFilter,
                 Builders<EnergyBookingSlot>.Update.Inc(s => s.Availability, 1).Set(s => s.UpdatedAt, DateTime.UtcNow)
             );
-            
-            // 2. Rollback old slot (safely decrement ONLY IF Availability > 0 to prevent invariant violation)
-            var oldSlotRollbackFilter = Builders<EnergyBookingSlot>.Filter.And(
-                Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, currentSlot.SlotId),
-                Builders<EnergyBookingSlot>.Filter.Gt(s => s.Availability, 0)
-            );
-            
-            await _db.EnergyBookingSlots.UpdateOneAsync(
-                oldSlotRollbackFilter,
-                Builders<EnergyBookingSlot>.Update.Inc(s => s.Availability, -1).Set(s => s.UpdatedAt, DateTime.UtcNow)
-            );
-            throw;
+
+            return Conflict(new { message = "The reservation was concurrently modified or cancelled. Please refresh and try again." });
         }
 
-        return Ok(existingReservation);
+        // Step C: Increment Old Slot availability (release space)
+        var oldSlotFilter = Builders<EnergyBookingSlot>.Filter.And(
+            Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, currentSlot.SlotId),
+            Builders<EnergyBookingSlot>.Filter.Lt(s => s.Availability, currentSlot.Capacity)
+        );
+
+        var oldSlotUpdate = Builders<EnergyBookingSlot>.Update
+            .Inc(s => s.Availability, 1)
+            .Set(s => s.UpdatedAt, DateTime.UtcNow);
+
+        await _db.EnergyBookingSlots.UpdateOneAsync(oldSlotFilter, oldSlotUpdate);
+
+        return Ok(updatedReservation);
     }
 
-    // DELETE: api/reservations/{id}
-    // Cancels an existing reservation.
+    /// <summary>
+    /// DELETE: api/reservations/{id}
+    /// Cancels an existing reservation with optimistic concurrency, slot integrity, and non-misleading status reporting.
+    /// </summary>
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id)
     {
@@ -463,25 +507,30 @@ public class ReservationsController : ControllerBase
             return NotFound(new { message = "Reservation not found." });
         }
 
-        // 2. Prevent invalid state transitions (including double cancellation)
-        if (existingReservation.Status == "Cancelled")
+        // 2. Prevent invalid state transitions.
+        // Only Pending and Approved reservations can be cancelled.
+        if (existingReservation.Status != "Pending" && existingReservation.Status != "Approved")
         {
-            return BadRequest(new { message = "Reservation is already cancelled." });
+            if (existingReservation.Status == "Cancelled")
+            {
+                return BadRequest(new { message = "Reservation is already cancelled." });
+            }
+
+            if (existingReservation.Status == "Completed")
+            {
+                return BadRequest(new { message = "Completed reservations cannot be cancelled." });
+            }
+
+            return BadRequest(new { message = $"Reservation in status '{existingReservation.Status}' cannot be cancelled." });
         }
 
-        if (existingReservation.Status == "Completed")
-        {
-            return BadRequest(new { message = "Completed reservations cannot be cancelled." });
-        }
-
-        // 3. Find the current slot and calculate 12-hour rule
+        // 3. Find current slot and calculate 12-hour rule
         var currentSlot = await _db.EnergyBookingSlots
             .Find(s => s.SlotId == existingReservation.SlotId)
             .FirstOrDefaultAsync();
 
         if (currentSlot == null)
         {
-            // If the slot doesn't exist, we can't calculate the 12-hour rule or restore availability safely.
             return NotFound(new { message = "Associated slot not found. Cannot safely cancel." });
         }
 
@@ -498,13 +547,13 @@ public class ReservationsController : ControllerBase
             return BadRequest(new { message = "Cancellation requires at least 12 hours' notice." });
         }
 
-        // 4. Atomic Reservation Update (Logical Cancellation)
-        // By checking the status in the filter, we ensure that if two cancellation requests arrive at the 
-        // exact same millisecond, only ONE will succeed in updating the status.
+        // 4. Atomic Reservation Update (Logical Cancellation) with optimistic concurrency.
+        // Validates expected SlotId and UpdatedAt so concurrent modification or cancellation is safely detected.
         var reservationFilter = Builders<EnergyReservation>.Filter.And(
             Builders<EnergyReservation>.Filter.Eq(r => r.Id, id),
-            Builders<EnergyReservation>.Filter.Ne(r => r.Status, "Cancelled"),
-            Builders<EnergyReservation>.Filter.Ne(r => r.Status, "Completed")
+            Builders<EnergyReservation>.Filter.Eq(r => r.SlotId, existingReservation.SlotId),
+            Builders<EnergyReservation>.Filter.In(r => r.Status, new[] { "Pending", "Approved" }),
+            Builders<EnergyReservation>.Filter.Eq(r => r.UpdatedAt, existingReservation.UpdatedAt)
         );
 
         var reservationUpdate = Builders<EnergyReservation>.Update
@@ -519,49 +568,28 @@ public class ReservationsController : ControllerBase
 
         if (updatedReservation == null)
         {
-            return BadRequest(new { message = "Reservation could not be cancelled. It may have already been cancelled concurrently." });
+            return Conflict(new { message = "Reservation was modified or cancelled concurrently. Cancellation aborted." });
         }
 
         // 5. Atomic Slot Availability Restoration
-        // We conditionally increment availability ONLY if it is currently less than the known capacity.
-        // Because 'Capacity' is immutable per project rules, using currentSlot.Capacity is safe from staleness.
-        // This guarantees the invariant: 0 <= Availability <= Capacity
-        bool slotRestored = false;
-        try
+        // Conditionally increments availability ONLY for the exact slot confirmed by the cancellation.
+        var slotFilter = Builders<EnergyBookingSlot>.Filter.And(
+            Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, existingReservation.SlotId),
+            Builders<EnergyBookingSlot>.Filter.Lt(s => s.Availability, currentSlot.Capacity)
+        );
+
+        var slotUpdate = Builders<EnergyBookingSlot>.Update
+            .Inc(s => s.Availability, 1)
+            .Set(s => s.UpdatedAt, DateTime.UtcNow);
+
+        var oldSlotResult = await _db.EnergyBookingSlots.UpdateOneAsync(slotFilter, slotUpdate);
+
+        if (oldSlotResult.ModifiedCount == 0)
         {
-            var slotFilter = Builders<EnergyBookingSlot>.Filter.And(
-                Builders<EnergyBookingSlot>.Filter.Eq(s => s.SlotId, currentSlot.SlotId),
-                Builders<EnergyBookingSlot>.Filter.Lt(s => s.Availability, currentSlot.Capacity)
-            );
-
-            var slotUpdate = Builders<EnergyBookingSlot>.Update
-                .Inc(s => s.Availability, 1)
-                .Set(s => s.UpdatedAt, DateTime.UtcNow);
-
-            var oldSlotResult = await _db.EnergyBookingSlots.UpdateOneAsync(slotFilter, slotUpdate);
-
-            if (oldSlotResult.ModifiedCount > 0)
-            {
-                slotRestored = true;
-            }
-        }
-        catch (Exception)
-        {
-            // If the database fails catastrophically during the slot increment, the reservation
-            // remains cancelled. Compensating a failed cancellation back to "Pending" because 
-            // the slot availability couldn't update is unsafe and violates user expectations.
-            // The reservation is successfully cancelled, but availability is "lost" due to this DB anomaly.
-            // The exception is thrown to return a 500 error to the client, indicating a partial failure.
-            throw; 
-        }
-
-        if (!slotRestored)
-        {
-            // ModifiedCount == 0 means the slot was deleted concurrently OR the availability was already 
-            // magically at capacity (data anomaly). 
-            // The logical cancellation succeeded, so we return 200 OK but include an explanatory message.
-            return Ok(new { 
-                message = "Reservation cancelled successfully, but slot availability could not be automatically restored due to an anomaly.", 
+            // Do not report 200 OK success if slot restoration failed.
+            // Return 500 Internal Server Error with the cancelled reservation details.
+            return StatusCode(500, new { 
+                message = "Reservation was cancelled, but slot availability could not be restored due to a database anomaly.", 
                 reservation = updatedReservation 
             });
         }

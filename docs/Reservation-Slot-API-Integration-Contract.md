@@ -1,6 +1,6 @@
 # Component 2: Energy Reservation & Slot Management — Authoritative API Contract
 
-**Document Version:** 2.0 (Phase 2 Frozen Baseline)  
+**Document Version:** 2.1 (Phase 2B Hardened Baseline)  
 **Target Branch:** `feature/viman-reservation-slots`  
 **API Framework:** ASP.NET Core 8.0 / C#  
 **Database:** MongoDB (`MongoDbContext`)  
@@ -20,7 +20,8 @@ Component 2 provides backend services for managing **Energy Booking Slots** and 
 1. **Server Authority:** The API backend is the sole authority for slot availability, capacity protection, booking window limits, notice intervals, and lifecycle state transitions. Clients must NEVER calculate, override, or manage availability independently.
 2. **Immutable Capacity:** Slot `capacity` is established upon slot creation and remains strictly immutable thereafter to prevent scheduling corruption.
 3. **Availability Invariant:** The database invariant `0 <= Availability <= Capacity` is enforced across all operations (create, update, cancel).
-4. **No Direct Web/Android Work in Phase 2:** All API contracts documented herein reflect the verified, tested, and running backend implementation.
+4. **Optimistic Concurrency & State Integrity:** All updates verify entity timestamps and expected states atomically. Duplicate business key attempts (SlotId, ReservationId) are backed by database-level unique constraints and handled via collision retries.
+5. **No Direct Web/Android Work in Phase 2:** All API contracts documented herein reflect the verified, tested, and running backend implementation.
 
 ---
 
@@ -174,7 +175,8 @@ All endpoints accept and return JSON using standard **camelCase** property namin
   3. `capacity` must be an integer `> 0`.
   4. `startTime` and `endTime` must strictly adhere to 24-hour `HH:mm` format (e.g., `09:00`, `18:30`). Arbitrary TimeSpan strings (e.g., `09:00:00`, `9:00`) are rejected.
   5. `endTime` must be strictly greater than `startTime`.
-  6. Server initializes `availability = capacity`, `status = "Available"`, and generates unique `slotId`.
+  6. **Unique SlotId Guarantee & Collision Retry:** The server enforces uniqueness via a MongoDB unique index (`ux_slotId`). The server implements an automated 3-attempt collision retry loop catching duplicate-key write exceptions to regenerate a fresh `slotId` before returning a conflict error.
+  7. Server initializes `availability = capacity`, `status = "Available"`.
 - **Response `201 Created`:**
   - Header: `Location: /api/slots/{id}`
   - Body: Complete `EnergyBookingSlot` JSON object.
@@ -186,6 +188,7 @@ All endpoints accept and return JSON using standard **camelCase** property namin
   - `400 Bad Request`: `{ "message": "EndTime must be after StartTime." }`
   - `400 Bad Request`: `{ "message": "Cannot create slots for an inactive station." }`
   - `404 Not Found`: `{ "message": "Station not found." }`
+  - `409 Conflict`: `{ "message": "Failed to create slot due to a unique key collision. Please try again." }`
 
 ---
 
@@ -209,7 +212,9 @@ All endpoints accept and return JSON using standard **camelCase** property namin
   3. **Strict Time Validation:** Modified `startTime` and `endTime` must adhere strictly to `HH:mm` format.
   4. **Server-Controlled / Protected:** `capacity` and `availability` are strictly ignored and CANNOT be manipulated through this endpoint.
   5. **Active-Reservation Schedule Protection:** If any schedule property (`date`, `startTime`, or `endTime`) is modified, the backend inspects `EnergyReservations` for active bookings (`status == "Pending"` or `status == "Approved"`). If active reservations exist, the schedule modification is **rejected** to prevent schedule corruption for booked prosumers.
-  6. **Status-Only Updates:** Operators can update `status` to `"Unavailable"` (or back to `"Available"`) at any time without triggering the active reservation schedule lock.
+  6. **Optimistic Concurrency Control:** The update matches `_id` and the slot's original `updatedAt` timestamp. If another request modified the slot concurrently, the server aborts the update and returns `409 Conflict`.
+  7. **TOCTOU Race Safeguard (Post-Check Reversion):** In the event an active reservation is committed during the schedule update execution window, a post-check immediately detects the new booking, automatically reverts the slot schedule to its prior values, and returns `400 Bad Request` to guarantee active reservation integrity.
+  8. **Status-Only Updates:** Operators can update `status` to `"Unavailable"` (or back to `"Available"`) at any time without triggering the active reservation schedule lock.
 - **Response `200 OK`:** Updated `EnergyBookingSlot` JSON object.
 - **Errors:**
   - `400 Bad Request`: `{ "message": "Date is required." }`
@@ -218,6 +223,7 @@ All endpoints accept and return JSON using standard **camelCase** property namin
   - `400 Bad Request`: `{ "message": "EndTime must be after StartTime." }`
   - `400 Bad Request`: `{ "message": "Cannot modify the slot schedule because active reservations exist for this slot." }`
   - `404 Not Found`: `{ "message": "Slot not found." }`
+  - `409 Conflict`: `{ "message": "The slot was concurrently modified by another request. Please refresh and try again." }`
 
 ---
 
@@ -269,9 +275,10 @@ All endpoints accept and return JSON using standard **camelCase** property namin
   3. Station must exist and have `status == "active"`.
   4. Slot must exist, match `stationId`, have `status == "Available"`, and `availability > 0`.
   5. **7-Day Booking Rule:** Slot start time (`slot.Date + slot.StartTime`) must be in the future and cannot exceed 7 days from current UTC time (`DateTime.UtcNow <= slotStartTime <= DateTime.UtcNow.AddDays(7)`).
-  6. **Atomic Concurrency Protection:** Slot `availability` is atomically decremented (`-1`) via `FindOneAndUpdateAsync` checking `availability > 0`.
-  7. **Safe Rollback / Invariant Protection:** If reservation creation fails, availability is rolled back (`+1`) conditionally checking `availability < capacity`. This strictly guarantees the invariant `0 <= availability <= capacity`.
-  8. Reservation is initialized with `status = "Pending"`.
+  6. **Atomic Schedule Validation & Availability Decrement:** Slot availability is atomically decremented (`-1`) via `FindOneAndUpdateAsync` checking `SlotId`, `StationId`, `Date`, `StartTime`, `EndTime`, `Status == "Available"`, and `Availability > 0`. This guarantees that if an operator concurrently changes the slot schedule, the booking is rejected.
+  7. **Unique ReservationId Guarantee & Collision Retry:** Uniqueness is enforced by a MongoDB unique index (`ux_reservationId`). An automated 3-attempt collision retry loop handles duplicate-key write exceptions before returning a conflict error.
+  8. **Safe Rollback / Invariant Protection:** If reservation insert fails, slot availability is conditionally rolled back (`+1` checking `availability < capacity`), preserving `0 <= availability <= capacity`.
+  9. Reservation is initialized with `status = "Pending"`.
 - **Response `201 Created`:**
   - Header: `Location: /api/reservations/{id}`
   - Body: Complete `EnergyReservation` JSON object.
@@ -284,10 +291,11 @@ All endpoints accept and return JSON using standard **camelCase** property namin
   - `400 Bad Request`: `{ "message": "Slot has no remaining availability." }`
   - `400 Bad Request`: `{ "message": "Cannot create a reservation for a slot in the past." }`
   - `400 Bad Request`: `{ "message": "Reservation must be scheduled within 7 days from now." }`
-  - `400 Bad Request`: `{ "message": "Slot has no remaining availability or could not be booked due to high concurrency." }`
+  - `400 Bad Request`: `{ "message": "Slot has no remaining availability or schedule changed concurrently." }`
   - `404 Not Found`: `{ "message": "Prosumer not found." }`
   - `404 Not Found`: `{ "message": "Station not found." }`
   - `404 Not Found`: `{ "message": "Slot not found." }`
+  - `409 Conflict`: `{ "message": "Failed to create reservation due to an ID collision. Please try again." }`
 
 ---
 
@@ -311,26 +319,28 @@ All endpoints accept and return JSON using standard **camelCase** property namin
      - If `stationId` does not match: rejected with `400 Bad Request`: `{ "message": "Slot does not belong to the requested station." }`.
   4. **12-Hour Modification Notice Rule:** Evaluated against the **CURRENT** slot's start time (`currentSlot.Date + currentSlot.StartTime`). The current UTC time must be at least 12 hours prior (`currentSlotStart - now >= 12 hours`). Otherwise rejected with 400 Bad Request.
   5. **Target Slot Validation:** New slot must exist, belong to requested station, have `status == "Available"`, have `availability > 0`, and satisfy the 7-day booking window.
-  6. **Safe Atomic Availability Exchange:**
-     - Step A: Decrements new slot `availability` by 1 (`FindOneAndUpdateAsync` checking `availability > 0`).
-     - Step B: Increments old slot `availability` by 1 (conditionally checking `availability < capacity`). If this fails, safely rolls back new slot decrement conditional on `availability < capacity`.
-     - Step C: Updates reservation with new `stationId`, `slotId`, and `updatedAt`.
-     - Rollback on failure safely restores new slot (`+1` if `< capacity`) and old slot (`-1` if `> 0`), preserving `0 <= availability <= capacity`.
+  6. **Re-ordered Safe Two-Phase Availability Exchange:**
+     - Step A: Atomically reserve new slot space (`-1`) with full schedule verification.
+     - Step B: Optimistically update reservation document verifying `Id`, original `SlotId`, original `StationId`, status in `["Pending", "Approved"]`, and `UpdatedAt`. If reservation was modified/cancelled concurrently, rolls back ONLY the new slot (`+1`) and returns `409 Conflict`. The old slot is never touched, eliminating dangerous decrement rollbacks!
+     - Step C: Release old slot space (`+1` conditional on `availability < capacity`).
 - **Response `200 OK`:** Updated `EnergyReservation` JSON object.
 - **Errors:**
   - `400 Bad Request`: `{ "message": "StationId and SlotId are required." }`
   - `400 Bad Request`: `{ "message": "Cancelled reservations cannot be modified." }`
   - `400 Bad Request`: `{ "message": "Completed reservations cannot be modified." }`
+  - `400 Bad Request`: `{ "message": "Reservation is not in a modifiable status." }`
   - `400 Bad Request`: `{ "message": "Slot does not belong to the requested station." }`
   - `400 Bad Request`: `{ "message": "Modification requires at least 12 hours' notice." }`
   - `400 Bad Request`: `{ "message": "New slot does not belong to the requested station." }`
   - `400 Bad Request`: `{ "message": "New slot is not available for booking." }`
   - `400 Bad Request`: `{ "message": "New slot has no remaining availability." }`
+  - `400 Bad Request`: `{ "message": "New slot has no remaining availability or schedule changed concurrently." }`
   - `400 Bad Request`: `{ "message": "Cannot modify reservation to a slot in the past." }`
   - `400 Bad Request`: `{ "message": "New slot must be scheduled within 7 days from now." }`
   - `404 Not Found`: `{ "message": "Reservation not found." }`
   - `404 Not Found`: `{ "message": "Current slot not found." }`
   - `404 Not Found`: `{ "message": "New slot not found." }`
+  - `409 Conflict`: `{ "message": "The reservation was concurrently modified or cancelled. Please refresh and try again." }`
 
 ---
 
@@ -341,12 +351,11 @@ All endpoints accept and return JSON using standard **camelCase** property namin
 - **Path Parameter:** `id` *(string, required)*: MongoDB ObjectId.
 - **Request Body:** None.
 - **Validation Rules & Logical Behavior:**
-  1. Reservation must exist.
-  2. **Double-Cancellation Protection:** If reservation is already `"Cancelled"`, returns 400 Bad Request: `{ "message": "Reservation is already cancelled." }`.
-  3. **Completed Protection:** If reservation is `"Completed"`, returns 400 Bad Request: `{ "message": "Completed reservations cannot be cancelled." }`.
-  4. **12-Hour Cancellation Notice Rule:** Evaluated against associated slot start time (`slot.Date + slot.StartTime`). Must be at least 12 hours in the future (`slotStartTime - now >= 12 hours`).
-  5. **State Transition:** Atomically changes reservation `status` from `"Pending"` (or `"Approved"`) to `"Cancelled"`.
-  6. **Availability Restoration:** Atomically increments slot `availability` (`+1`) conditional on `availability < capacity`. This strictly prevents availability from ever exceeding maximum capacity.
+  1. Reservation must exist (`404 Not Found`).
+  2. **Permitted Status Protection:** Only `"Pending"` and `"Approved"` reservations can be cancelled. Any other status (including `"Cancelled"`, `"Completed"`, or unexpected legacy states) is rejected.
+  3. **12-Hour Cancellation Notice Rule:** Evaluated against associated slot start time (`slot.Date + slot.StartTime`). Must be at least 12 hours in the future (`slotStartTime - now >= 12 hours`).
+  4. **Optimistic Cancellation with Slot Integrity:** The cancellation filter strictly validates `_id`, expected `SlotId`, status in `["Pending", "Approved"]`, and `UpdatedAt`. If modified concurrently, returns `409 Conflict`.
+  5. **Atomic Availability Restoration & Non-Misleading Reporting:** Increments slot `availability` (`+1` conditional on `availability < capacity`) for the exact slot confirmed by the cancellation. If restoration update returns `ModifiedCount == 0`, returns `500 Internal Server Error` instead of a misleading 200 OK.
 - **Response `200 OK`:**
   ```json
   {
@@ -367,9 +376,12 @@ All endpoints accept and return JSON using standard **camelCase** property namin
 - **Errors:**
   - `400 Bad Request`: `{ "message": "Reservation is already cancelled." }`
   - `400 Bad Request`: `{ "message": "Completed reservations cannot be cancelled." }`
+  - `400 Bad Request`: `{ "message": "Reservation in status '{status}' cannot be cancelled." }`
   - `400 Bad Request`: `{ "message": "Cancellation requires at least 12 hours' notice." }`
   - `404 Not Found`: `{ "message": "Reservation not found." }`
   - `404 Not Found`: `{ "message": "Associated slot not found. Cannot safely cancel." }`
+  - `409 Conflict`: `{ "message": "Reservation was modified or cancelled concurrently. Cancellation aborted." }`
+  - `500 Internal Server Error`: `{ "message": "Reservation was cancelled, but slot availability could not be restored due to a database anomaly.", "reservation": { ... } }`
 
 ---
 
@@ -476,3 +488,24 @@ If a request payload fails JSON deserialization or type binding, ASP.NET Core re
   - `transactionReference`: Stored on reservation for transfer ledger audit.
 - **Documented Integration Gaps (Requires Team Agreement):**
   1. *Approval / Completion Endpoints:* Dedicated endpoints such as `PATCH /api/reservations/{id}/approve` or `PATCH /api/reservations/{id}/complete` remain **Pending team integration decision**. They are not invented or deployed in Phase 2 to prevent contract drift.
+
+---
+
+## 10. Concurrency, Data Integrity & Standalone MongoDB Architecture
+
+### 10.1 Standalone MongoDB Deployment Limitation
+The project's configured local development and grading deployment utilizes standalone MongoDB instances (`mongodb://localhost:27017`). In MongoDB, multi-document transactions (`IClientSessionHandle.StartTransaction()`) are strictly supported only on **Replica Sets** or **Sharded Clusters** (`mongos`). Attempting transactions on a standalone instance throws:
+> `MongoCommandException: Transaction numbers are only allowed on a replica set member or mongos`
+
+Consequently, Component 2 does not fabricate or pretend that multi-document distributed transactions exist. Instead, it enforces strict data integrity and mathematical invariants through atomic document operations, optimistic concurrency, and operation-specific compensation.
+
+### 10.2 Concurrency & Integrity Mechanisms
+
+| Area | Challenge | Hardened Architectural Solution |
+| :--- | :--- | :--- |
+| **ID Collisions** | Probability-based short GUID collision risk on `SlotId` and `ReservationId`. | Configured database-level unique indexes (`ux_slotId`, `ux_reservationId`) via `MongoDbIndexConfigurator`. Insert loops implement a 3-attempt retry catching `ServerErrorCategory.DuplicateKey` before returning `409 Conflict`. |
+| **Booking vs Schedule Race** | Slot schedule altered by operator while prosumer creates reservation. | Atomic slot decrement (`FindOneAndUpdateAsync`) incorporates full slot schedule (`Date`, `StartTime`, `EndTime`, `StationId`, `Status == "Available"`). If schedule was modified, the decrement filter does not match and booking is rejected. |
+| **Concurrent Reservation Updates** | Stale reservation update overwrites concurrent modification or cancellation. | Reservation mutation uses optimistic concurrency filtering on `Id`, original `SlotId`, original `StationId`, `Status in ["Pending", "Approved"]`, and `UpdatedAt`. Returns `409 Conflict` on concurrent clash. |
+| **Dangerous Decrement Rollbacks** | Standard rollback sequence decrements availability belonging to a concurrent operation. | **Re-ordered exchange**: Step A reserves new slot (`-1`). Step B conditionally updates reservation document. If Step B fails, only new slot is restored (`+1`). Old slot was NEVER modified, completely eliminating decrement rollback risk! Step C releases old slot space (`+1`) only after reservation update is secured. |
+| **Slot Schedule TOCTOU Race** | Slot schedule update checks active reservations, then concurrent reservation is booked before slot update commits. | Slot schedule update employs optimistic timestamp locking, followed by a post-commit reservation check. If an active reservation was committed during the update window, the schedule modification is immediately reverted in MongoDB and rejected with `400 Bad Request`. |
+| **Cancellation Integrity** | Cancellation restores availability for wrong slot or reports success when restoration fails. | Cancellation filter atomically verifies expected `SlotId` and `UpdatedAt`. Restores availability specifically for the confirmed slot. If slot restoration update yields `ModifiedCount == 0`, returns `500 Internal Server Error` instead of a misleading `200 OK`. Only `"Pending"` and `"Approved"` states are cancellable. |

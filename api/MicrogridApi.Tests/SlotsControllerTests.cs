@@ -722,5 +722,122 @@ namespace MicrogridApi.Tests.Unit
             var okResult = Assert.IsType<OkObjectResult>(result);
             Assert.Equal(200, okResult.StatusCode);
         }
+
+        // =========================================================================
+        // SECTION: CONCURRENCY & INTEGRITY TESTS
+        // =========================================================================
+
+        [Fact]
+        public async Task Update_ConcurrentModification_ReturnsConflict()
+        {
+            var slot = new EnergyBookingSlot { Id = "1", SlotId = "SLOT-1", Date = new DateTime(2026, 1, 1), StartTime = "09:00", EndTime = "10:00", Status = "Available", UpdatedAt = DateTime.UtcNow };
+            SetupSlot(slot);
+
+            // Simulate concurrent modification where UpdatedAt does not match
+            _mockSlotsCollection
+                .Setup(c => c.UpdateOneAsync(
+                    It.IsAny<FilterDefinition<EnergyBookingSlot>>(),
+                    It.IsAny<UpdateDefinition<EnergyBookingSlot>>(),
+                    It.IsAny<UpdateOptions>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new UpdateResult.Acknowledged(0, 0, null));
+
+            var req = new UpdateSlotRequest { Status = "Unavailable" };
+            var result = await _controller.Update("1", req);
+
+            var conflictResult = Assert.IsType<ConflictObjectResult>(result);
+            Assert.Equal(409, conflictResult.StatusCode);
+        }
+
+        [Fact]
+        public async Task Update_ActiveReservationCreatedDuringWindow_RevertsAndReturnsBadRequest()
+        {
+            var slot = new EnergyBookingSlot { Id = "1", SlotId = "SLOT-1", Date = new DateTime(2026, 1, 1), StartTime = "09:00", EndTime = "10:00", Status = "Available" };
+            SetupSlot(slot);
+
+            // First call to CountDocumentsAsync returns 0 (pre-check passes)
+            // Second call to CountDocumentsAsync returns 1 (post-check detects active reservation created during window)
+            _mockReservationsCollection
+                .SetupSequence(c => c.CountDocumentsAsync(
+                    It.IsAny<FilterDefinition<EnergyReservation>>(),
+                    It.IsAny<CountOptions>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(0)
+                .ReturnsAsync(1);
+
+            var req = new UpdateSlotRequest { StartTime = "11:00", EndTime = "12:00" };
+            var result = await _controller.Update("1", req);
+
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+            Assert.Equal(400, badRequest.StatusCode);
+
+            // Verify revert was called on the slots collection
+            _mockSlotsCollection.Verify(c => c.UpdateOneAsync(
+                It.IsAny<FilterDefinition<EnergyBookingSlot>>(),
+                It.IsAny<UpdateDefinition<EnergyBookingSlot>>(),
+                It.IsAny<UpdateOptions>(),
+                It.IsAny<CancellationToken>()), Times.AtLeast(2));
+        }
+
+        [Fact]
+        public async Task Create_SlotIdCollision_RetriesAndSucceeds()
+        {
+            SetupStation(new MicrogridNode { NodeId = "ST-1", Status = "active" });
+
+            var duplicateKeyException = CreateDuplicateKeyException();
+
+            int callCount = 0;
+            _mockSlotsCollection
+                .Setup(c => c.InsertOneAsync(
+                    It.IsAny<EnergyBookingSlot>(),
+                    It.IsAny<InsertOneOptions>(),
+                    It.IsAny<CancellationToken>()))
+                .Returns((EnergyBookingSlot s, InsertOneOptions opt, CancellationToken ct) =>
+                {
+                    callCount++;
+                    if (callCount == 1 && duplicateKeyException != null)
+                    {
+                        throw duplicateKeyException;
+                    }
+                    s.Id = "new-slot-id";
+                    return Task.CompletedTask;
+                });
+
+            var req = new CreateSlotRequest
+            {
+                StationId = "ST-1",
+                Date = new DateTime(2026, 4, 1),
+                StartTime = "10:00",
+                EndTime = "11:00",
+                Capacity = 5
+            };
+
+            var result = await _controller.Create(req);
+            var created = Assert.IsType<CreatedAtActionResult>(result);
+            Assert.Equal(201, created.StatusCode);
+            Assert.Equal(2, callCount); // Verified retry occurred
+        }
+
+        private static MongoWriteException CreateDuplicateKeyException()
+        {
+            var writeError = (WriteError)RuntimeHelpers.GetUninitializedObject(typeof(WriteError));
+            foreach (var field in typeof(WriteError).GetFields(BindingFlags.NonPublic | BindingFlags.Instance))
+            {
+                if (field.FieldType == typeof(ServerErrorCategory))
+                    field.SetValue(writeError, ServerErrorCategory.DuplicateKey);
+                else if (field.FieldType == typeof(int))
+                    field.SetValue(writeError, 11000);
+                else if (field.FieldType == typeof(string))
+                    field.SetValue(writeError, "E11000 duplicate key error");
+            }
+
+            var ex = (MongoWriteException)RuntimeHelpers.GetUninitializedObject(typeof(MongoWriteException));
+            foreach (var field in typeof(MongoWriteException).GetFields(BindingFlags.NonPublic | BindingFlags.Instance))
+            {
+                if (field.FieldType == typeof(WriteError))
+                    field.SetValue(ex, writeError);
+            }
+            return ex;
+        }
     }
 }

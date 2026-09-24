@@ -1,3 +1,10 @@
+// ============================================================================
+// File: SlotsController.cs
+// Component: Component 2 - Energy Reservation & Slot Management
+// Description: Manages energy booking slots, including schedule updates,
+//              concurrency safeguards, and status transitions.
+// ============================================================================
+
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
 using MicrogridApi.Data;
@@ -12,13 +19,21 @@ public class SlotsController : ControllerBase
 {
     private readonly MongoDbContext _db;
 
+    // AUTHORIZATION CONTRACT:
+    // Slot mutations (Create, Update) are restricted to Backoffice and GridOperator roles.
+    // Prosumers are strictly prohibited from creating or altering slot schedules.
+    // Integration Hook: Once Component 1 configures the ASP.NET Core JWT authentication scheme on dev,
+    // endpoints will be secured with [Authorize(Roles = "Backoffice,GridOperator")].
+
     public SlotsController(MongoDbContext db)
     {
         _db = db;
     }
 
-    // GET: api/slots
-    // Returns slots with optional filtering by stationId and date.
+    /// <summary>
+    /// GET: api/slots
+    /// Returns slots with optional filtering by stationId and calendar date (YYYY-MM-DD).
+    /// </summary>
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] string? stationId, [FromQuery] string? date)
     {
@@ -48,8 +63,10 @@ public class SlotsController : ControllerBase
         return Ok(slots);
     }
 
-    // GET: api/slots/{id}
-    // Returns one slot using its MongoDB ID.
+    /// <summary>
+    /// GET: api/slots/{id}
+    /// Returns one slot using its MongoDB ID.
+    /// </summary>
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(string id)
     {
@@ -65,8 +82,10 @@ public class SlotsController : ControllerBase
         return Ok(slot);
     }
 
-    // POST: api/slots
-    // Creates a new slot.
+    /// <summary>
+    /// POST: api/slots
+    /// Creates a new energy booking slot with collision retry and database-level uniqueness.
+    /// </summary>
     [HttpPost]
     public async Task<IActionResult> Create(CreateSlotRequest request)
     {
@@ -110,31 +129,55 @@ public class SlotsController : ControllerBase
             return BadRequest(new { message = "Cannot create slots for an inactive station." });
         }
 
-        var newSlot = new EnergyBookingSlot
-        {
-            SlotId = $"SLOT-{Guid.NewGuid().ToString("N")[..8].ToUpper()}",
-            StationId = request.StationId,
-            Date = request.Date.Date, // store pure date component
-            StartTime = request.StartTime,
-            EndTime = request.EndTime,
-            Capacity = request.Capacity,
-            Availability = request.Capacity, // Availability initially represents the full booking capacity
-            Status = "Available",
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
+        // Collision-resilient insertion loop for SlotId
+        const int maxRetries = 3;
+        EnergyBookingSlot? createdSlot = null;
 
-        await _db.EnergyBookingSlots.InsertOneAsync(newSlot);
+        for (int attempt = 0; attempt < maxRetries; attempt++)
+        {
+            var newSlot = new EnergyBookingSlot
+            {
+                SlotId = $"SLOT-{Guid.NewGuid().ToString("N")[..8].ToUpper()}",
+                StationId = request.StationId,
+                Date = request.Date.Date, // store pure date component
+                StartTime = request.StartTime,
+                EndTime = request.EndTime,
+                Capacity = request.Capacity,
+                Availability = request.Capacity, // Availability initially represents the full booking capacity
+                Status = "Available",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            try
+            {
+                await _db.EnergyBookingSlots.InsertOneAsync(newSlot);
+                createdSlot = newSlot;
+                break;
+            }
+            catch (MongoWriteException ex) when (ex.WriteError.Category == ServerErrorCategory.DuplicateKey && attempt < maxRetries - 1)
+            {
+                // SlotId collision: retry with a newly generated SlotId
+            }
+        }
+
+        if (createdSlot == null)
+        {
+            return Conflict(new { message = "Failed to create slot due to a unique key collision. Please try again." });
+        }
 
         return CreatedAtAction(
             nameof(GetById),
-            new { id = newSlot.Id },
-            newSlot
+            new { id = createdSlot.Id },
+            createdSlot
         );
     }
 
-    // PUT: api/slots/{id}
-    // Updates slot schedule and status. Strictly prevents updating Capacity and Availability.
+    /// <summary>
+    /// PUT: api/slots/{id}
+    /// Updates slot schedule and status using optimistic concurrency and active-reservation rollback.
+    /// Strictly prevents updating Capacity and Availability.
+    /// </summary>
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, UpdateSlotRequest request)
     {
@@ -200,7 +243,7 @@ public class SlotsController : ControllerBase
                 return BadRequest(new { message = "EndTime must be after StartTime." });
             }
 
-            // SAFEGUARD: Do not allow schedule changes if active reservations exist
+            // SAFEGUARD (Pre-check): Do not allow schedule changes if active reservations exist
             var activeReservationsExist = await _db.EnergyReservations
                 .CountDocumentsAsync(r => r.SlotId == existingSlot.SlotId && (r.Status == "Pending" || r.Status == "Approved")) > 0;
 
@@ -210,7 +253,7 @@ public class SlotsController : ControllerBase
             }
         }
 
-        // Apply safe updates
+        // Apply safe updates with optimistic concurrency
         var updateDefinitionBuilder = Builders<EnergyBookingSlot>.Update
             .Set(s => s.UpdatedAt, DateTime.UtcNow);
 
@@ -220,23 +263,58 @@ public class SlotsController : ControllerBase
                 .Set(s => s.Date, newDate)
                 .Set(s => s.StartTime, newStartTime)
                 .Set(s => s.EndTime, newEndTime);
-            
-            existingSlot.Date = newDate;
-            existingSlot.StartTime = newStartTime;
-            existingSlot.EndTime = newEndTime;
         }
 
         if (!string.IsNullOrWhiteSpace(request.Status))
         {
             updateDefinitionBuilder = updateDefinitionBuilder.Set(s => s.Status, request.Status);
-            existingSlot.Status = request.Status;
         }
 
-        await _db.EnergyBookingSlots.UpdateOneAsync(
-            s => s.Id == id,
+        // Optimistic concurrency filter: ensures the slot was not modified concurrently
+        var slotFilter = Builders<EnergyBookingSlot>.Filter.And(
+            Builders<EnergyBookingSlot>.Filter.Eq(s => s.Id, id),
+            Builders<EnergyBookingSlot>.Filter.Eq(s => s.UpdatedAt, existingSlot.UpdatedAt)
+        );
+
+        var updateResult = await _db.EnergyBookingSlots.UpdateOneAsync(
+            slotFilter,
             updateDefinitionBuilder
         );
 
+        if (updateResult.ModifiedCount == 0)
+        {
+            return Conflict(new { message = "The slot was concurrently modified by another request. Please refresh and try again." });
+        }
+
+        // SAFEGUARD (Post-check): Verify that no active reservation was committed concurrently during the update window
+        if (scheduleChanging)
+        {
+            var postCheckActiveReservations = await _db.EnergyReservations
+                .CountDocumentsAsync(r => r.SlotId == existingSlot.SlotId && (r.Status == "Pending" || r.Status == "Approved")) > 0;
+
+            if (postCheckActiveReservations)
+            {
+                // Revert schedule change immediately to protect the active reservation from schedule corruption
+                await _db.EnergyBookingSlots.UpdateOneAsync(
+                    s => s.Id == id,
+                    Builders<EnergyBookingSlot>.Update
+                        .Set(s => s.Date, existingSlot.Date)
+                        .Set(s => s.StartTime, existingSlot.StartTime)
+                        .Set(s => s.EndTime, existingSlot.EndTime)
+                        .Set(s => s.UpdatedAt, DateTime.UtcNow)
+                );
+
+                return BadRequest(new { message = "Cannot modify the slot schedule because active reservations exist for this slot." });
+            }
+        }
+
+        existingSlot.Date = newDate;
+        existingSlot.StartTime = newStartTime;
+        existingSlot.EndTime = newEndTime;
+        if (!string.IsNullOrWhiteSpace(request.Status))
+        {
+            existingSlot.Status = request.Status;
+        }
         existingSlot.UpdatedAt = DateTime.UtcNow;
 
         return Ok(existingSlot);
