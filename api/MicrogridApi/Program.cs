@@ -35,4 +35,11 @@ app.UseCors("AllowWebApp");
 app.UseAuthorization();
 app.MapControllers();
 
+// Initialize unique indexes for EnergyBookingSlot (SlotId) and EnergyReservation (ReservationId)
+// Awaited properly before serving any incoming requests
+var mongoDb = app.Services.GetRequiredService<MongoDbContext>();
+await MongoDbIndexConfigurator.ConfigureIndexesAsync(mongoDb, app.Environment.IsDevelopment());
+
 app.Run();
+
+public partial class Program { }

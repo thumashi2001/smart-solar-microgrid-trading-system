@@ -38,4 +38,10 @@ public class MongoDbContext
 
     public IMongoCollection<MicrogridNode> MicrogridNodes =>
         _database.GetCollection<MicrogridNode>("SolarStationInfo");
+
+    public IMongoCollection<EnergyBookingSlot> EnergyBookingSlots =>
+        _database.GetCollection<EnergyBookingSlot>("energyBookingSlots");
+
+    public IMongoCollection<EnergyReservation> EnergyReservations =>
+        _database.GetCollection<EnergyReservation>("energyReservation");
 }
