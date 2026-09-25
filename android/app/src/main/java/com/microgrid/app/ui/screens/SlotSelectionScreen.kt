@@ -1,6 +1,5 @@
 package com.microgrid.app.ui.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -11,6 +10,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.BoltSharp
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,24 +20,47 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.microgrid.app.data.MicrogridNode
 import com.microgrid.app.data.RetrofitClient
 import com.microgrid.app.data.Slot
 import kotlinx.coroutines.launch
 
 /**
- * SlotSelectionScreen — Component 2
+ * SlotSelectionScreen — Component 2, Step 3 of 4
  *
- * Shows all Available energy booking slots. The prosumer taps a slot to
- * proceed to the booking confirmation flow.
+ * Loads available slots for a specific station + date via GET /api/slots.
+ * Only Available slots with availability > 0 are shown.
  *
- * Navigation inputs:
- *  @param prosumerNic  NIC of the logged-in prosumer (from LoginScreen)
- *  @param onBack       Pop back to ProfileScreen
- *  @param onSlotSelected  Navigate to ReservationSummaryScreen with the chosen slot
+ * @param station       Chosen station (Step 1).
+ * @param selectedDate  Chosen date in yyyy-MM-dd format (Step 2).
+ * @param onBack        Navigate back to DateSelectionScreen.
+ * @param onSlotSelected Navigate to Step 4 (ReservationSummaryScreen) with the chosen slot.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SlotSelectionScreen(
+    station: MicrogridNode,
+    selectedDate: String,
+    onBack: () -> Unit,
+    onSlotSelected: (Slot) -> Unit
+) {
+    // Legacy overload: when called without station/date context (from old flow), load all
+    // This overload is kept for any remaining legacy call sites.
+    SlotSelectionScreenContent(
+        station = station,
+        selectedDate = selectedDate,
+        prosumerNic = "",
+        onBack = onBack,
+        onSlotSelected = onSlotSelected
+    )
+}
+
+// Separate content function — also re-usable from the update flow
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SlotSelectionScreenContent(
+    station: MicrogridNode,
+    selectedDate: String,
     prosumerNic: String,
     onBack: () -> Unit,
     onSlotSelected: (Slot) -> Unit
@@ -46,16 +69,15 @@ fun SlotSelectionScreen(
     var slots by remember { mutableStateOf<List<Slot>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
-    var selectedDate by remember { mutableStateOf("") }
 
-    // Load available slots on first compose (and when date filter changes)
-    LaunchedEffect(selectedDate) {
+    LaunchedEffect(station.nodeId, selectedDate) {
         scope.launch {
             isLoading = true
             error = ""
             try {
                 val response = RetrofitClient.instance.getSlots(
-                    date = selectedDate.ifBlank { null }
+                    stationId = station.nodeId,
+                    date = selectedDate
                 )
                 if (response.isSuccessful) {
                     slots = (response.body() ?: emptyList())
@@ -74,7 +96,12 @@ fun SlotSelectionScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Book Energy Slot", fontWeight = FontWeight.Bold) },
+                title = {
+                    Column {
+                        Text("Book Energy", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("Step 3 of 4 — Select Slot", fontSize = 11.sp, color = Color.White.copy(alpha = 0.7f))
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
@@ -95,9 +122,11 @@ fun SlotSelectionScreen(
                 .padding(padding)
                 .padding(horizontal = 16.dp)
         ) {
+            BookingProgressBar(currentStep = 3)
+
             Spacer(Modifier.height(12.dp))
 
-            // ── Info banner ──────────────────────────────────────────────
+            // Context chips
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFE6F4EA)),
                 shape = RoundedCornerShape(10.dp),
@@ -105,49 +134,41 @@ fun SlotSelectionScreen(
             ) {
                 Row(
                     modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Icon(Icons.Filled.BoltSharp, contentDescription = null, tint = AccentGreen)
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        "Select an available slot to book your energy reservation at a microgrid station.",
-                        fontSize = 13.sp,
-                        color = Color(0xFF0B3B2E)
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.LocationOn, null, tint = AccentGreen, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(station.nodeName.ifBlank { station.nodeId }, fontSize = 13.sp, color = DarkGreen, fontWeight = FontWeight.SemiBold)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.CalendarToday, null, tint = AccentGreen, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(selectedDate, fontSize = 13.sp, color = DarkGreen, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
 
             Spacer(Modifier.height(12.dp))
 
-            // ── Section label ────────────────────────────────────────────
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    "Available Slots",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = DarkGreen
-                )
-                Text(
-                    "${slots.size} found",
-                    fontSize = 12.sp,
-                    color = Color.Gray
-                )
+                Text("Available Time Slots", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkGreen)
+                Text("${slots.size} found", fontSize = 12.sp, color = Color.Gray)
             }
 
             Spacer(Modifier.height(8.dp))
 
-            // ── Content ──────────────────────────────────────────────────
             when {
                 isLoading -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator(color = AccentGreen)
                             Spacer(Modifier.height(12.dp))
-                            Text("Loading available slots…", color = Color.Gray, fontSize = 13.sp)
+                            Text("Loading slots…", color = Color.Gray, fontSize = 13.sp)
                         }
                     }
                 }
@@ -161,16 +182,13 @@ fun SlotSelectionScreen(
                             Button(
                                 onClick = {
                                     scope.launch {
-                                        isLoading = true
-                                        error = ""
+                                        isLoading = true; error = ""
                                         try {
-                                            val r = RetrofitClient.instance.getSlots()
-                                            slots = r.body()
-                                                ?.filter { it.status == "Available" && it.availability > 0 }
-                                                ?: emptyList()
-                                        } catch (ex: Exception) {
-                                            error = ex.message ?: "Unknown error"
-                                        } finally { isLoading = false }
+                                            val r = RetrofitClient.instance.getSlots(stationId = station.nodeId, date = selectedDate)
+                                            slots = r.body()?.filter { it.status == "Available" && it.availability > 0 } ?: emptyList()
+                                            if (!r.isSuccessful) error = "HTTP ${r.code()}"
+                                        } catch (ex: Exception) { error = ex.message ?: "Error" }
+                                        finally { isLoading = false }
                                     }
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = AccentGreen)
@@ -183,8 +201,10 @@ fun SlotSelectionScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("⚡", fontSize = 40.sp)
                             Spacer(Modifier.height(12.dp))
-                            Text("No available slots right now", fontWeight = FontWeight.SemiBold, color = DarkGreen)
-                            Text("Check back later for new openings.", fontSize = 13.sp, color = Color.Gray)
+                            Text("No slots available", fontWeight = FontWeight.SemiBold, color = DarkGreen)
+                            Text("No available slots for this station and date.", fontSize = 13.sp, color = Color.Gray)
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedButton(onClick = onBack) { Text("Choose Different Date") }
                         }
                     }
                 }
@@ -214,43 +234,24 @@ private fun SlotCard(slot: Slot, onClick: () -> Unit) {
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            // Header row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(
-                    color = Color(0xFFEBE8E1),
-                    shape = RoundedCornerShape(6.dp)
-                ) {
+                Surface(color = Color(0xFFEBE8E1), shape = RoundedCornerShape(6.dp)) {
                     Text(
                         slot.slotId,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = DarkGreen
+                        fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkGreen
                     )
                 }
-                Surface(
-                    color = Color(0xFFE6F4EA),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Filled.CheckCircle,
-                            contentDescription = null,
-                            tint = AccentGreen,
-                            modifier = Modifier.size(13.dp)
-                        )
+                Surface(color = Color(0xFFE6F4EA), shape = RoundedCornerShape(12.dp)) {
+                    Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.CheckCircle, null, tint = AccentGreen, modifier = Modifier.size(13.dp))
                         Spacer(Modifier.width(4.dp))
                         Text("Available", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = AccentGreen)
                     }
@@ -259,69 +260,43 @@ private fun SlotCard(slot: Slot, onClick: () -> Unit) {
 
             Spacer(Modifier.height(10.dp))
 
-            // Station
-            Text(
-                "Station: ${slot.stationId}",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = DarkGreen
-            )
-
-            Spacer(Modifier.height(6.dp))
-
-            // Date + time
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.CalendarToday, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Filled.CalendarToday, null, tint = Color.Gray, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(4.dp))
                     Text(slot.date, fontSize = 13.sp, color = Color(0xFF444444))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Schedule, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Filled.Schedule, null, tint = Color.Gray, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("${slot.startTime} – ${slot.endTime}", fontSize = 13.sp, color = Color(0xFF444444))
+                    Text("${slot.startTime} – ${slot.endTime}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF444444))
                 }
             }
 
             Spacer(Modifier.height(10.dp))
 
-            // Availability bar
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "${slot.availability} spaces left",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = barColor
-                )
-                Text(
-                    "of ${slot.capacity}",
-                    fontSize = 12.sp,
-                    color = Color.Gray
-                )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("${slot.availability} spaces left", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = barColor)
+                Text("of ${slot.capacity}", fontSize = 12.sp, color = Color.Gray)
             }
             Spacer(Modifier.height(4.dp))
             LinearProgressIndicator(
                 progress = { fillPct },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp),
+                modifier = Modifier.fillMaxWidth().height(6.dp),
                 color = barColor,
                 trackColor = Color(0xFFEBE8E1)
             )
 
             Spacer(Modifier.height(10.dp))
 
-            // CTA
             Button(
                 onClick = onClick,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(8.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = AccentGreen)
             ) {
+                Icon(Icons.Filled.BoltSharp, null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
                 Text("Book This Slot", fontWeight = FontWeight.Bold)
             }
         }

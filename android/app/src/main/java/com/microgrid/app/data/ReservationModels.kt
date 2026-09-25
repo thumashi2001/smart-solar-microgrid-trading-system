@@ -3,6 +3,19 @@ package com.microgrid.app.data
 import com.google.gson.annotations.SerializedName
 
 // ──────────────────────────────────────────────
+// Microgrid Node (Station) model — for station selection
+// ──────────────────────────────────────────────
+
+data class MicrogridNode(
+    @SerializedName("id") val id: String = "",
+    @SerializedName("nodeId") val nodeId: String = "",
+    @SerializedName("nodeName") val nodeName: String = "",
+    @SerializedName("location") val location: String = "",
+    @SerializedName("status") val status: String = "",
+    @SerializedName("capacity") val capacity: Double = 0.0
+)
+
+// ──────────────────────────────────────────────
 // Slot models
 // ──────────────────────────────────────────────
 
@@ -15,7 +28,9 @@ data class Slot(
     @SerializedName("endTime") val endTime: String = "",
     @SerializedName("capacity") val capacity: Int = 0,
     @SerializedName("availability") val availability: Int = 0,
-    @SerializedName("status") val status: String = "Available"
+    @SerializedName("status") val status: String = "Available",
+    @SerializedName("createdAt") val createdAt: String = "",
+    @SerializedName("updatedAt") val updatedAt: String = ""
 )
 
 // ──────────────────────────────────────────────
@@ -25,27 +40,44 @@ data class Slot(
 data class Reservation(
     @SerializedName("id") val id: String = "",
     @SerializedName("reservationId") val reservationId: String = "",
-    @SerializedName("slotId") val slotId: String = "",
-    @SerializedName("stationId") val stationId: String = "",
+    // Backend field names are camelCase — Gson deserialises them automatically
     @SerializedName("prosumerNic") val prosumerNic: String = "",
-    @SerializedName("date") val date: String = "",
-    @SerializedName("startTime") val startTime: String = "",
-    @SerializedName("endTime") val endTime: String = "",
+    @SerializedName("stationId") val stationId: String = "",
+    @SerializedName("slotId") val slotId: String = "",
     @SerializedName("status") val status: String = "Pending",
-    @SerializedName("energyAmount") val energyAmount: Double = 0.0,
-    @SerializedName("notes") val notes: String = "",
-    @SerializedName("createdAt") val createdAt: String = ""
+    @SerializedName("createdAt") val createdAt: String = "",
+    @SerializedName("updatedAt") val updatedAt: String = "",
+    @SerializedName("transactionReference") val transactionReference: String = ""
 )
 
+/**
+ * POST /api/reservations
+ *
+ * Backend DTO (CreateReservationRequest.cs):
+ *   public string ProsumerNic { get; set; }
+ *   public string StationId   { get; set; }
+ *   public string SlotId      { get; set; }
+ *
+ * NO energyAmount. NO notes. Do not add unsupported fields.
+ */
 data class CreateReservationRequest(
-    @SerializedName("slotId") val slotId: String,
     @SerializedName("prosumerNic") val prosumerNic: String,
-    @SerializedName("energyAmount") val energyAmount: Double,
-    @SerializedName("notes") val notes: String = ""
+    @SerializedName("stationId") val stationId: String,
+    @SerializedName("slotId") val slotId: String
 )
 
+/**
+ * PUT /api/reservations/{id}
+ *
+ * Backend DTO (UpdateReservationRequest.cs):
+ *   public string StationId { get; set; }
+ *   public string SlotId    { get; set; }
+ *
+ * This moves the reservation to a DIFFERENT slot on the same or a different station.
+ * It is NOT a status-change endpoint.
+ * Cancellation uses DELETE /api/reservations/{id}.
+ */
 data class UpdateReservationRequest(
-    @SerializedName("energyAmount") val energyAmount: Double? = null,
-    @SerializedName("notes") val notes: String? = null,
-    @SerializedName("status") val status: String? = null
+    @SerializedName("stationId") val stationId: String,
+    @SerializedName("slotId") val slotId: String
 )

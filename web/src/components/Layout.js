@@ -148,6 +148,12 @@ function Layout({ children }) {
             "Energy Slots",
             "⚡"
           )}
+
+          {navItem(
+            "/reservations",
+            "Reservations",
+            "📋"
+          )}
         </div>
 
         {/* LOGOUT */}

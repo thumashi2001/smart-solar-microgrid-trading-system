@@ -1,10 +1,8 @@
 package com.microgrid.app.ui.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -20,44 +18,114 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.microgrid.app.data.CreateReservationRequest
+import com.microgrid.app.data.MicrogridNode
+import com.microgrid.app.data.Reservation
 import com.microgrid.app.data.RetrofitClient
 import com.microgrid.app.data.Slot
 import kotlinx.coroutines.launch
 
 /**
- * ReservationSummaryScreen — Component 2
+ * ReservationSummaryScreen — Component 2, Step 4 of 4
  *
- * Shows the chosen slot details and lets the prosumer enter energyAmount/notes
- * before confirming the booking. On success it transitions to MyBookingsScreen.
+ * Displays station + slot details and asks for final confirmation before
+ * calling POST /api/reservations.
  *
- * @param slot          The slot chosen on SlotSelectionScreen.
+ * Backend DTO contract (CreateReservationRequest.cs):
+ *   - prosumerNic   ← required
+ *   - stationId     ← required
+ *   - slotId        ← required (backend uses SlotId field, not MongoDB _id)
+ *
+ * Note: energyAmount and notes are NOT part of the backend contract.
+ *       Do not send them in the request body.
+ *
+ * @param station       The chosen station (Step 1).
+ * @param slot          The chosen slot (Step 3).
  * @param prosumerNic   NIC of the logged-in prosumer.
- * @param onBack        Pop back to SlotSelectionScreen.
- * @param onBooked      Navigate to MyBookingsScreen after a successful booking.
+ * @param onBack        Navigate back to SlotSelectionScreen.
+ * @param onBooked      Navigate to MyBookingsScreen after successful booking.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReservationSummaryScreen(
+    station: MicrogridNode,
     slot: Slot,
     prosumerNic: String,
     onBack: () -> Unit,
-    onBooked: () -> Unit
+    onBooked: (Reservation) -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    var energyAmount by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
     var isSubmitting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
-    var success by remember { mutableStateOf(false) }
+    var createdReservation by remember { mutableStateOf<Reservation?>(null) }
 
+    // ── Success state ────────────────────────────────────────────────
+    if (createdReservation != null) {
+        val res = createdReservation!!
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(Modifier.height(32.dp))
+            Icon(Icons.Filled.CheckCircle, null, tint = AccentGreen, modifier = Modifier.size(80.dp))
+            Spacer(Modifier.height(16.dp))
+            Text("Booking Confirmed!", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = DarkGreen)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Your reservation has been submitted and is now Pending admin approval.",
+                fontSize = 14.sp, color = Color.Gray,
+                lineHeight = 20.sp
+            )
+            Spacer(Modifier.height(24.dp))
+
+            // Summary card
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(14.dp),
+                elevation = CardDefaults.cardElevation(4.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text("Booking Summary", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = DarkGreen)
+                    Spacer(Modifier.height(12.dp))
+                    SummaryRow("Reservation ID", res.reservationId)
+                    SummaryRow("Station", station.nodeName.ifBlank { station.nodeId })
+                    SummaryRow("Slot", slot.slotId)
+                    SummaryRow("Date", slot.date)
+                    SummaryRow("Time", "${slot.startTime} – ${slot.endTime}")
+                    SummaryRow("Status", res.status)
+                }
+            }
+
+            Spacer(Modifier.height(28.dp))
+
+            Button(
+                onClick = { onBooked(res) },
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = AccentGreen)
+            ) {
+                Text("View My Bookings", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            }
+        }
+        return
+    }
+
+    // ── Main content ─────────────────────────────────────────────────
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Confirm Booking", fontWeight = FontWeight.Bold) },
+                title = {
+                    Column {
+                        Text("Book Energy", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("Step 4 of 4 — Confirm", fontSize = 11.sp, color = Color.White.copy(alpha = 0.7f))
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
@@ -72,53 +140,6 @@ fun ReservationSummaryScreen(
         },
         containerColor = PageBg
     ) { padding ->
-        // ── Success overlay ─────────────────────────────────────────────
-        if (success) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .background(PageBg),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(32.dp)
-                ) {
-                    Icon(
-                        Icons.Filled.CheckCircle,
-                        contentDescription = null,
-                        tint = AccentGreen,
-                        modifier = Modifier.size(72.dp)
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        "Booking Submitted!",
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = DarkGreen
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Your reservation request is now Pending.\nAn admin will review and approve it shortly.",
-                        fontSize = 14.sp,
-                        color = Color.Gray,
-                        lineHeight = 20.sp
-                    )
-                    Spacer(Modifier.height(28.dp))
-                    Button(
-                        onClick = onBooked,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentGreen)
-                    ) {
-                        Text("View My Bookings", fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-            return@Scaffold
-        }
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -126,30 +147,55 @@ fun ReservationSummaryScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
-            // ── Slot summary card ────────────────────────────────────────
+            BookingProgressBar(currentStep = 4)
+
+            Spacer(Modifier.height(16.dp))
+
+            // ── Station card ─────────────────────────────────────────
             Card(
                 shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                elevation = CardDefaults.cardElevation(4.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.BoltSharp, contentDescription = null, tint = AccentGreen)
+                        Icon(Icons.Filled.LocationOn, null, tint = AccentGreen)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Station", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = DarkGreen)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    DetailRow(Icons.Filled.LocationOn, "Name", station.nodeName.ifBlank { station.nodeId })
+                    DetailRow(Icons.Filled.LocationOn, "Station ID", station.nodeId)
+                    if (station.location.isNotBlank()) {
+                        DetailRow(Icons.Filled.LocationOn, "Location", station.location)
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            // ── Slot card ────────────────────────────────────────────
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(4.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.BoltSharp, null, tint = AccentGreen)
                         Spacer(Modifier.width(8.dp))
                         Text("Slot Details", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = DarkGreen)
                     }
-                    Spacer(Modifier.height(14.dp))
-                    SlotDetailRow(Icons.Filled.LocationOn, "Station", slot.stationId)
-                    SlotDetailRow(Icons.Filled.CalendarToday, "Date", slot.date)
-                    SlotDetailRow(Icons.Filled.Schedule, "Time", "${slot.startTime} – ${slot.endTime}")
+                    Spacer(Modifier.height(10.dp))
+                    DetailRow(Icons.Filled.BoltSharp, "Slot ID", slot.slotId)
+                    DetailRow(Icons.Filled.CalendarToday, "Date", slot.date)
+                    DetailRow(Icons.Filled.Schedule, "Time", "${slot.startTime} – ${slot.endTime}")
                     Spacer(Modifier.height(8.dp))
                     HorizontalDivider()
                     Spacer(Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("${slot.availability}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = AccentGreen)
                             Text("Spaces Left", fontSize = 11.sp, color = Color.Gray)
@@ -158,62 +204,28 @@ fun ReservationSummaryScreen(
                             Text("${slot.capacity}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkGreen)
                             Text("Capacity", fontSize = 11.sp, color = Color.Gray)
                         }
-                        Surface(
-                            color = Color(0xFFE6F4EA),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Text(
-                                slot.status,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = AccentGreen
-                            )
-                        }
                     }
                 }
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(14.dp))
 
-            // ── Booking form ─────────────────────────────────────────────
-            Text("Booking Details", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = DarkGreen)
-            Spacer(Modifier.height(10.dp))
-
-            OutlinedTextField(
-                value = energyAmount,
-                onValueChange = { v -> if (v.all { it.isDigit() || it == '.' }) energyAmount = v },
-                label = { Text("Energy Amount (kWh) *") },
-                placeholder = { Text("e.g. 5.0") },
-                leadingIcon = { Icon(Icons.Filled.BoltSharp, contentDescription = null, tint = AccentGreen) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+            // ── Policy notice ────────────────────────────────────────
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF7E0)),
                 shape = RoundedCornerShape(10.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = AccentGreen,
-                    focusedLabelColor = AccentGreen
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    "📋 Booking Policy\n• Status begins as Pending until admin approves.\n• Modifications require ≥12 hours notice before slot start.\n• Cancellations require ≥12 hours notice before slot start.\n• Slots can only be booked within 7 days from today.",
+                    modifier = Modifier.padding(14.dp),
+                    fontSize = 12.sp,
+                    color = Color(0xFF7A5700),
+                    lineHeight = 18.sp
                 )
-            )
+            }
 
-            Spacer(Modifier.height(12.dp))
-
-            OutlinedTextField(
-                value = notes,
-                onValueChange = { notes = it },
-                label = { Text("Notes (optional)") },
-                placeholder = { Text("Any special requirements…") },
-                maxLines = 4,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(120.dp),
-                shape = RoundedCornerShape(10.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = AccentGreen,
-                    focusedLabelColor = AccentGreen
-                )
-            )
-
+            // ── Error ────────────────────────────────────────────────
             if (error.isNotBlank()) {
                 Spacer(Modifier.height(12.dp))
                 Card(
@@ -223,7 +235,7 @@ fun ReservationSummaryScreen(
                 ) {
                     Text(
                         "⚠ $error",
-                        modifier = Modifier.padding(12.dp),
+                        modifier = Modifier.padding(14.dp),
                         fontSize = 13.sp,
                         color = Color(0xFFC5221F),
                         fontWeight = FontWeight.Medium
@@ -233,37 +245,32 @@ fun ReservationSummaryScreen(
 
             Spacer(Modifier.height(24.dp))
 
-            // ── Submit button ────────────────────────────────────────────
+            // ── Confirm button ───────────────────────────────────────
             Button(
                 onClick = {
-                    // Validate
-                    val kWh = energyAmount.toDoubleOrNull()
-                    if (kWh == null || kWh <= 0) {
-                        error = "Please enter a valid energy amount greater than 0 kWh."
-                        return@Button
-                    }
                     error = ""
                     scope.launch {
                         isSubmitting = true
                         try {
-                            val slotId = slot.id.ifBlank { slot.slotId }
+                            // Use SlotId (the business key), not the MongoDB _id
+                            val slotIdToSend = slot.slotId.ifBlank { slot.id }
                             val response = RetrofitClient.instance.createReservation(
                                 CreateReservationRequest(
-                                    slotId = slotId,
                                     prosumerNic = prosumerNic,
-                                    energyAmount = kWh,
-                                    notes = notes.trim()
+                                    stationId = station.nodeId,
+                                    slotId = slotIdToSend
                                 )
                             )
-                            if (response.isSuccessful) {
-                                success = true
+                            if (response.isSuccessful && response.body() != null) {
+                                createdReservation = response.body()
                             } else {
-                                // Try to extract server message
-                                val body = response.errorBody()?.string() ?: ""
+                                val bodyStr = response.errorBody()?.string() ?: ""
                                 error = when (response.code()) {
-                                    409 -> "This slot has no availability left. Please choose another slot."
-                                    400 -> "Invalid booking details: $body"
-                                    else -> "Booking failed (HTTP ${response.code()}). Try again."
+                                    400 -> extractMessage(bodyStr, "Invalid booking request. Check station/slot validity.")
+                                    404 -> extractMessage(bodyStr, "Station, slot, or prosumer not found.")
+                                    409 -> "Slot is fully booked. Please choose another slot."
+                                    503 -> "Service temporarily unavailable. Please try again shortly."
+                                    else -> "Booking failed (HTTP ${response.code()}). Please try again."
                                 }
                             }
                         } catch (ex: Exception) {
@@ -274,9 +281,7 @@ fun ReservationSummaryScreen(
                     }
                 },
                 enabled = !isSubmitting,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
+                modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = DarkGreen,
@@ -284,47 +289,46 @@ fun ReservationSummaryScreen(
                 )
             ) {
                 if (isSubmitting) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
-                        color = Color.White,
-                        strokeWidth = 2.dp
-                    )
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
                     Spacer(Modifier.width(10.dp))
                 }
                 Text(
                     if (isSubmitting) "Submitting…" else "Confirm Booking",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
+                    fontWeight = FontWeight.Bold, fontSize = 16.sp
                 )
             }
-
-            Spacer(Modifier.height(8.dp))
-
-            // Policy note
-            Text(
-                "Your reservation will be in Pending status until an administrator approves it. Cancellations must be made at least 12 hours before the slot start time.",
-                fontSize = 11.sp,
-                color = Color.Gray,
-                lineHeight = 16.sp,
-                modifier = Modifier.padding(horizontal = 4.dp)
-            )
 
             Spacer(Modifier.height(16.dp))
         }
     }
 }
 
+private fun extractMessage(body: String, fallback: String): String {
+    // Try to parse {"message":"..."} from error body
+    val match = Regex("\"message\"\\s*:\\s*\"([^\"]+)\"").find(body)
+    return match?.groupValues?.get(1) ?: fallback
+}
+
 @Composable
-private fun SlotDetailRow(icon: ImageVector, label: String, value: String) {
+private fun DetailRow(icon: ImageVector, label: String, value: String) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
+        Icon(icon, null, tint = Color.Gray, modifier = Modifier.size(15.dp))
         Spacer(Modifier.width(8.dp))
         Text("$label: ", fontSize = 13.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
         Text(value, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1C1F1E))
+    }
+}
+
+@Composable
+private fun SummaryRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(label, fontSize = 13.sp, color = Color.Gray)
+        Text(value, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = DarkGreen)
     }
 }
