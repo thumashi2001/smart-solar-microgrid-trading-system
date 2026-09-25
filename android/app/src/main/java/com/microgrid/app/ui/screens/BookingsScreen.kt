@@ -17,24 +17,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.microgrid.app.data.BookingUiModel
 
 private val BookingGreen = Color(0xFF0B4F3C)
 private val BookingAccentGreen = Color(0xFF1E8754)
 private val BookingBackground = Color(0xFFF8F6F2)
 private val BookingGray = Color(0xFF7A7A7A)
 
-data class BookingUiModel(
-    val id: String,
-    val stationName: String,
-    val location: String,
-    val date: String,
-    val time: String,
-    val energyAmount: String,
-    val status: String
-)
+
 
 @Composable
 fun BookingsScreen(
+    nic: String,
     onBackClick: () -> Unit,
     onBookingClick: (String) -> Unit,
     onHomeClick: () -> Unit,

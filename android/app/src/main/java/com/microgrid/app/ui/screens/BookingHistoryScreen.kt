@@ -1,5 +1,5 @@
 package com.microgrid.app.ui.screens
-
+import com.microgrid.app.data.BookingUiModel
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -17,6 +17,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.microgrid.app.data.RetrofitClient
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 private val HistoryGreen = Color(0xFF0B4F3C)
 private val HistoryAccentGreen = Color(0xFF1E8754)
@@ -25,6 +28,7 @@ private val HistoryGray = Color(0xFF7A7A7A)
 
 @Composable
 fun BookingHistoryScreen(
+    nic: String,
     onBackClick: () -> Unit,
     onBookingClick: (String) -> Unit,
     onHomeClick: () -> Unit,

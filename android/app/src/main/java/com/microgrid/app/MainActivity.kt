@@ -82,6 +82,7 @@ class MainActivity : ComponentActivity() {
                         }
                         is Screen.Bookings -> {
                             BookingsScreen(
+                                nic = loggedInNic,
                                 onBackClick = {
                                     currentScreen = Screen.Dashboard
                                 },
@@ -98,6 +99,7 @@ class MainActivity : ComponentActivity() {
                         }
                         is Screen.BookingHistory -> {
                             BookingHistoryScreen(
+                                nic = loggedInNic,
                                 onBackClick = {
                                     currentScreen = Screen.Dashboard
                                 },
