@@ -119,8 +119,12 @@ class MainActivity : ComponentActivity() {
                         }
                         is Screen.SearchBookings -> {
                             SearchBookingsScreen(
+                                nic = loggedInNic,
                                 onBackClick = {
                                     currentScreen = Screen.Dashboard
+                                },
+                                onBookingClick = { bookingId ->
+                                    currentScreen = Screen.BookingDetails(bookingId)
                                 }
                             )
                         }
