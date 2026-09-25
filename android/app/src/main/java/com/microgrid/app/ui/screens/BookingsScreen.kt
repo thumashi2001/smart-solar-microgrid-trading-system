@@ -18,6 +18,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.microgrid.app.data.BookingUiModel
+import com.microgrid.app.data.RetrofitClient
+import kotlinx.coroutines.launch
 
 private val BookingGreen = Color(0xFF0B4F3C)
 private val BookingAccentGreen = Color(0xFF1E8754)
@@ -37,38 +39,111 @@ fun BookingsScreen(
     var searchText by remember { mutableStateOf("") }
     var selectedFilter by remember { mutableStateOf("All") }
 
-    // Temporary UI data.
-    // This will be replaced with live booking data from the Web API.
-    val bookings = remember {
-        listOf(
-            BookingUiModel(
-                id = "BK-1001",
-                stationName = "Colombo Solar Hub",
-                location = "Colombo",
-                date = "28 Sep 2026",
-                time = "10:00 AM",
-                energyAmount = "20 kWh",
-                status = "Pending"
-            ),
-            BookingUiModel(
-                id = "BK-1002",
-                stationName = "Malabe Solar Hub",
-                location = "Malabe",
-                date = "29 Sep 2026",
-                time = "02:30 PM",
-                energyAmount = "15 kWh",
-                status = "Approved"
-            ),
-            BookingUiModel(
-                id = "BK-1003",
-                stationName = "Kaduwela Energy Station",
-                location = "Kaduwela",
-                date = "30 Sep 2026",
-                time = "09:00 AM",
-                energyAmount = "25 kWh",
-                status = "Pending"
-            )
-        )
+    var bookings by remember { mutableStateOf<List<BookingUiModel>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(nic) {
+
+        if (nic.isBlank()) {
+            errorMessage = "Unable to identify the logged-in prosumer."
+            isLoading = false
+            return@LaunchedEffect
+        }
+
+        isLoading = true
+        errorMessage = null
+
+        try {
+
+            val reservationResponse =
+                RetrofitClient.instance.getReservationHistory(nic)
+
+            val slotResponse =
+                RetrofitClient.instance.getSlots()
+
+            val nodeResponse =
+                RetrofitClient.instance.getMicrogridNodes()
+
+            if (
+                reservationResponse.isSuccessful &&
+                slotResponse.isSuccessful &&
+                nodeResponse.isSuccessful
+            ) {
+
+                val reservations =
+                    reservationResponse.body().orEmpty()
+
+                val slots =
+                    slotResponse.body().orEmpty()
+
+                val nodes =
+                    nodeResponse.body().orEmpty()
+
+                bookings = reservations
+                    .filter {
+                        it.status.equals("Pending", ignoreCase = true) ||
+                                it.status.equals("Approved", ignoreCase = true)
+                    }
+                    .map { reservation ->
+
+                        val slot = slots.find {
+                            it.slotId == reservation.slotId
+                        }
+
+                        val node = nodes.find {
+                            it.nodeId == reservation.stationId
+                        }
+
+                        BookingUiModel(
+                            id = reservation.reservationId,
+
+                            stationName =
+                                node?.nodeName ?: reservation.stationId,
+
+                            location =
+                                node?.location ?: "Unknown location",
+
+                            date =
+                                slot?.date?.substringBefore("T")
+                                    ?: "Date unavailable",
+
+                            time =
+                                if (slot != null) {
+                                    "${slot.startTime} - ${slot.endTime}"
+                                } else {
+                                    "Time unavailable"
+                                },
+
+                            energyAmount =
+                                if (slot != null) {
+                                    "${slot.capacity} kWh"
+                                } else {
+                                    "Capacity unavailable"
+                                },
+
+                            status = reservation.status
+                        )
+                    }
+
+            } else {
+
+                errorMessage = """
+        Reservation API: ${reservationResponse.code()}
+        Slots API: ${slotResponse.code()}
+        Nodes API: ${nodeResponse.code()}
+    """.trimIndent()
+            }
+
+        } catch (e: Exception) {
+
+            errorMessage =
+                e.message ?: "Unable to connect to the server."
+
+        } finally {
+
+            isLoading = false
+        }
     }
 
     val filteredBookings = bookings.filter { booking ->
@@ -231,26 +306,83 @@ fun BookingsScreen(
                 }
             }
 
-            if (filteredBookings.isEmpty()) {
+            when {
 
-                item {
+                isLoading -> {
 
-                    EmptyBookingsView()
+                    item {
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 60.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+
+                            CircularProgressIndicator(
+                                color = BookingAccentGreen
+                            )
+                        }
+                    }
                 }
 
-            } else {
+                errorMessage != null -> {
 
-                items(
-                    items = filteredBookings,
-                    key = { it.id }
-                ) { booking ->
+                    item {
 
-                    BookingCard(
-                        booking = booking,
-                        onClick = {
-                            onBookingClick(booking.id)
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = Color(0xFFFFE9E7)
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+
+                            Column(
+                                modifier = Modifier.padding(16.dp)
+                            ) {
+
+                                Text(
+                                    text = "Unable to load bookings",
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFB3261E)
+                                )
+
+                                Spacer(
+                                    modifier = Modifier.height(6.dp)
+                                )
+
+                                Text(
+                                    text = errorMessage ?: "Unknown error",
+                                    fontSize = 13.sp,
+                                    color = Color(0xFFB3261E)
+                                )
+                            }
                         }
-                    )
+                    }
+                }
+
+                filteredBookings.isEmpty() -> {
+
+                    item {
+                        EmptyBookingsView()
+                    }
+                }
+
+                else -> {
+
+                    items(
+                        items = filteredBookings,
+                        key = { it.id }
+                    ) { booking ->
+
+                        BookingCard(
+                            booking = booking,
+                            onClick = {
+                                onBookingClick(booking.id)
+                            }
+                        )
+                    }
                 }
             }
         }

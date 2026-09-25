@@ -49,3 +49,9 @@ Content-Type: application/json
 }
 
 ###
+
+### Get reservation history for Lehansa
+GET {{MicrogridApi_HostAddress}}/api/reservations/history/200884501266
+Accept: application/json
+
+###
