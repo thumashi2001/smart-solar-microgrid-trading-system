@@ -130,6 +130,7 @@ class MainActivity : ComponentActivity() {
 
                             BookingDetailsScreen(
                                 bookingId = screen.bookingId,
+                                nic = loggedInNic,
                                 onBackClick = {
                                     currentScreen = Screen.Bookings
                                 }
