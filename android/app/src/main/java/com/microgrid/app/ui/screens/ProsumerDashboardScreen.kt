@@ -8,7 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.microgrid.app.data.RetrofitClient
 
 private val DashboardGreen = Color(0xFF1E7A4D)
 private val DashboardDarkGreen = Color(0xFF0B3B2E)
@@ -30,6 +31,73 @@ fun ProsumerDashboardScreen(
     onHistoryClick: () -> Unit,
     onSearchClick: () -> Unit
 ) {
+
+    // Reservation summary values loaded from the API
+    var pendingCount by remember { mutableIntStateOf(0) }
+    var approvedCount by remember { mutableIntStateOf(0) }
+
+    var isLoadingSummary by remember { mutableStateOf(true) }
+    var summaryLoadFailed by remember { mutableStateOf(false) }
+
+    /*
+     * Load reservation history for the currently logged-in prosumer.
+     *
+     * The same reservation history endpoint used by My Bookings is used here,
+     * so the dashboard always reflects the current server-side reservation
+     * state for this NIC.
+     */
+    LaunchedEffect(nic) {
+
+        if (nic.isBlank()) {
+            isLoadingSummary = false
+            summaryLoadFailed = true
+            return@LaunchedEffect
+        }
+
+        isLoadingSummary = true
+        summaryLoadFailed = false
+
+        try {
+
+            val response =
+                RetrofitClient.instance.getReservationHistory(nic)
+
+            if (response.isSuccessful) {
+
+                val reservations = response.body().orEmpty()
+
+                pendingCount = reservations.count { reservation ->
+                    reservation.status.equals(
+                        "Pending",
+                        ignoreCase = true
+                    )
+                }
+
+                approvedCount = reservations.count { reservation ->
+                    reservation.status.equals(
+                        "Approved",
+                        ignoreCase = true
+                    )
+                }
+
+            } else {
+
+                pendingCount = 0
+                approvedCount = 0
+                summaryLoadFailed = true
+            }
+
+        } catch (e: Exception) {
+
+            pendingCount = 0
+            approvedCount = 0
+            summaryLoadFailed = true
+
+        } finally {
+
+            isLoadingSummary = false
+        }
+    }
 
     Scaffold(
         containerColor = DashboardBackground,
@@ -58,6 +126,7 @@ fun ProsumerDashboardScreen(
             ) {
 
                 Column {
+
                     Text(
                         text = "Smart Solar",
                         fontSize = 22.sp,
@@ -75,12 +144,16 @@ fun ProsumerDashboardScreen(
                 Box(
                     modifier = Modifier
                         .size(46.dp)
-                        .background(DashboardGreen, CircleShape)
+                        .background(
+                            DashboardGreen,
+                            CircleShape
+                        )
                         .clickable {
                             onProfileClick()
                         },
                     contentAlignment = Alignment.Center
                 ) {
+
                     Icon(
                         imageVector = Icons.Default.Person,
                         contentDescription = "Profile",
@@ -122,15 +195,28 @@ fun ProsumerDashboardScreen(
                 ReservationSummaryCard(
                     modifier = Modifier.weight(1f),
                     title = "Pending",
-                    count = "0",
-                    icon = Icons.Default.Schedule
+                    count = pendingCount.toString(),
+                    icon = Icons.Default.Schedule,
+                    isLoading = isLoadingSummary
                 )
 
                 ReservationSummaryCard(
                     modifier = Modifier.weight(1f),
                     title = "Approved",
-                    count = "0",
-                    icon = Icons.Default.CheckCircle
+                    count = approvedCount.toString(),
+                    icon = Icons.Default.CheckCircle,
+                    isLoading = isLoadingSummary
+                )
+            }
+
+            if (summaryLoadFailed) {
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "Unable to refresh reservation summary.",
+                    color = MaterialTheme.colorScheme.error,
+                    fontSize = 12.sp
                 )
             }
 
@@ -162,6 +248,7 @@ fun ProsumerDashboardScreen(
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
+
                             Icon(
                                 imageVector = Icons.Default.Bolt,
                                 contentDescription = null,
@@ -332,7 +419,8 @@ private fun ReservationSummaryCard(
     modifier: Modifier,
     title: String,
     count: String,
-    icon: ImageVector
+    icon: ImageVector,
+    isLoading: Boolean = false
 ) {
 
     Card(
@@ -358,12 +446,25 @@ private fun ReservationSummaryCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            Text(
-                text = count,
-                fontSize = 26.sp,
-                fontWeight = FontWeight.Bold,
-                color = DashboardDarkGreen
-            )
+            if (isLoading) {
+
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 2.dp,
+                    color = DashboardGreen
+                )
+
+            } else {
+
+                Text(
+                    text = count,
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = DashboardDarkGreen
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
 
             Text(
                 text = title,

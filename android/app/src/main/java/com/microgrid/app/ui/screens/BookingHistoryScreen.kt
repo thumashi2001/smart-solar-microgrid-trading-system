@@ -1,11 +1,10 @@
 package com.microgrid.app.ui.screens
-import com.microgrid.app.data.BookingUiModel
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -17,14 +16,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.microgrid.app.data.BookingUiModel
 import com.microgrid.app.data.RetrofitClient
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 
-private val HistoryGreen = Color(0xFF0B4F3C)
-private val HistoryAccentGreen = Color(0xFF1E8754)
-private val HistoryBackground = Color(0xFFF8F6F2)
-private val HistoryGray = Color(0xFF7A7A7A)
+private val HistoryGreen = Color(0xFF07553F)
+private val HistoryAccentGreen = Color(0xFF148A61)
+private val HistoryBackground = Color(0xFFF8F7F3)
+private val HistoryLightGreen = Color(0xFFE8F4EE)
+private val HistoryBorder = Color(0xFFE2E2DE)
+private val HistoryTextSecondary = Color(0xFF777777)
+private val HistoryPendingBackground = Color(0xFFFFF1CC)
+private val HistoryPendingText = Color(0xFF9A6500)
+private val HistoryCancelledBackground = Color(0xFFFFE5E5)
+private val HistoryCancelledText = Color(0xFFB3261E)
 
 @Composable
 fun BookingHistoryScreen(
@@ -38,66 +42,164 @@ fun BookingHistoryScreen(
     var searchText by remember { mutableStateOf("") }
     var selectedFilter by remember { mutableStateOf("All") }
 
-    /*
-     * Temporary UI data.
-     *
-     * These bookings are used only while the reservation API is not
-     * implemented. Later this list should be replaced by booking history
-     * retrieved from the Web API.
-     */
-    val historyBookings = remember {
-        listOf(
-            BookingUiModel(
-                id = "BK-0901",
-                stationName = "Colombo Solar Hub",
-                location = "Colombo",
-                date = "12 Sep 2026",
-                time = "09:30 AM",
-                energyAmount = "18 kWh",
-                status = "Completed"
-            ),
-            BookingUiModel(
-                id = "BK-0902",
-                stationName = "Malabe Solar Hub",
-                location = "Malabe",
-                date = "08 Sep 2026",
-                time = "02:00 PM",
-                energyAmount = "25 kWh",
-                status = "Completed"
-            ),
-            BookingUiModel(
-                id = "BK-0903",
-                stationName = "Kaduwela Energy Station",
-                location = "Kaduwela",
-                date = "02 Sep 2026",
-                time = "11:00 AM",
-                energyAmount = "15 kWh",
-                status = "Cancelled"
-            ),
-            BookingUiModel(
-                id = "BK-0904",
-                stationName = "Negombo Solar Station",
-                location = "Negombo",
-                date = "28 Aug 2026",
-                time = "03:30 PM",
-                energyAmount = "20 kWh",
-                status = "Completed"
-            )
-        )
+    var bookings by remember {
+        mutableStateOf<List<BookingUiModel>>(emptyList())
     }
 
-    val filteredBookings = historyBookings.filter { booking ->
+    var isLoading by remember {
+        mutableStateOf(true)
+    }
+
+    var errorMessage by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    /*
+     * Load the logged-in prosumer's reservation history from the API.
+     * Reservation, slot and microgrid node information are combined
+     * to create the data required by the booking history UI.
+     */
+    LaunchedEffect(nic) {
+
+        if (nic.isBlank()) {
+            errorMessage = "Unable to identify the logged-in prosumer."
+            isLoading = false
+            return@LaunchedEffect
+        }
+
+        isLoading = true
+        errorMessage = null
+
+        try {
+
+            val reservationResponse =
+                RetrofitClient.instance.getReservationHistory(nic)
+
+            val slotResponse =
+                RetrofitClient.instance.getSlots()
+
+            val nodeResponse =
+                RetrofitClient.instance.getMicrogridNodes()
+
+            if (
+                reservationResponse.isSuccessful &&
+                slotResponse.isSuccessful &&
+                nodeResponse.isSuccessful
+            ) {
+
+                val reservations = reservationResponse.body().orEmpty()
+                val slots = slotResponse.body().orEmpty()
+                val nodes = nodeResponse.body().orEmpty()
+
+                /*
+                 * Booking History should contain reservations that are no
+                 * longer current. Pending and Approved reservations remain
+                 * under My Bookings.
+                 */
+                bookings = reservations
+                    .filter { reservation ->
+                        reservation.status.equals(
+                            "Completed",
+                            ignoreCase = true
+                        ) ||
+                                reservation.status.equals(
+                                    "Cancelled",
+                                    ignoreCase = true
+                                )
+                    }
+                    .map { reservation ->
+
+                        val slot = slots.find {
+                            it.slotId == reservation.slotId
+                        }
+
+                        val node = nodes.find {
+                            it.nodeId == reservation.stationId
+                        }
+
+                        BookingUiModel(
+                            id = reservation.reservationId,
+
+                            stationName =
+                                node?.nodeName
+                                    ?: reservation.stationId,
+
+                            location =
+                                node?.location
+                                    ?: "Unknown location",
+
+                            date =
+                                slot?.date?.substringBefore("T")
+                                    ?: "Date unavailable",
+
+                            time =
+                                if (slot != null) {
+                                    "${slot.startTime} - ${slot.endTime}"
+                                } else {
+                                    "Time unavailable"
+                                },
+
+                            /*
+                             * The current API response does not contain
+                             * a separate reserved energy amount.
+                             * Therefore slot capacity is displayed here.
+                             */
+                            energyAmount =
+                                if (slot != null) {
+                                    "${slot.capacity} kWh"
+                                } else {
+                                    "Capacity unavailable"
+                                },
+
+                            status = reservation.status
+                        )
+                    }
+
+            } else {
+
+                errorMessage =
+                    "Unable to load booking history from the server."
+            }
+
+        } catch (e: Exception) {
+
+            errorMessage =
+                e.message ?: "Unable to connect to the server."
+
+        } finally {
+
+            isLoading = false
+        }
+    }
+
+    /*
+     * Apply the selected status filter and search query.
+     */
+    val filteredBookings = bookings.filter { booking ->
 
         val matchesSearch =
-            booking.id.contains(searchText, ignoreCase = true) ||
-                    booking.stationName.contains(searchText, ignoreCase = true) ||
-                    booking.location.contains(searchText, ignoreCase = true)
+            searchText.isBlank() ||
+                    booking.id.contains(
+                        searchText,
+                        ignoreCase = true
+                    ) ||
+                    booking.stationName.contains(
+                        searchText,
+                        ignoreCase = true
+                    ) ||
+                    booking.location.contains(
+                        searchText,
+                        ignoreCase = true
+                    )
 
-        val matchesFilter =
+        val matchesStatus =
             selectedFilter == "All" ||
-                    booking.status.equals(selectedFilter, ignoreCase = true)
+                    booking.status.equals(
+                        selectedFilter,
+                        ignoreCase = true
+                    )
 
-        matchesSearch && matchesFilter
+        matchesSearch && matchesStatus
     }
 
     Scaffold(
@@ -117,17 +219,17 @@ fun BookingHistoryScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(HistoryBackground),
+                .padding(horizontal = 20.dp),
             contentPadding = PaddingValues(
-                start = 20.dp,
-                end = 20.dp,
                 top = 18.dp,
                 bottom = 24.dp
             ),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
 
-            // Header
+            /*
+             * Page header
+             */
             item {
 
                 Row(
@@ -137,6 +239,7 @@ fun BookingHistoryScreen(
                     IconButton(
                         onClick = onBackClick
                     ) {
+
                         Icon(
                             imageVector = Icons.Default.ArrowBack,
                             contentDescription = "Back",
@@ -154,15 +257,17 @@ fun BookingHistoryScreen(
                         )
 
                         Text(
-                            text = "View your previous energy reservations",
+                            text = "View your previous reservations",
                             fontSize = 12.sp,
-                            color = HistoryGray
+                            color = HistoryTextSecondary
                         )
                     }
                 }
             }
 
-            // Search
+            /*
+             * Search field
+             */
             item {
 
                 OutlinedTextField(
@@ -172,104 +277,163 @@ fun BookingHistoryScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = {
-                        Text("Search booking, station or location")
+                        Text(
+                            "Search booking, station or location"
+                        )
                     },
                     leadingIcon = {
+
                         Icon(
                             imageVector = Icons.Default.Search,
                             contentDescription = "Search"
                         )
                     },
                     singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = HistoryAccentGreen,
-                        cursorColor = HistoryAccentGreen
-                    )
+                    shape = RoundedCornerShape(14.dp)
                 )
             }
 
-            // Filters
+            /*
+             * Status filter buttons
+             */
             item {
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement =
+                        Arrangement.spacedBy(8.dp)
                 ) {
 
                     HistoryFilterButton(
-                        title = "All",
-                        selected = selectedFilter == "All",
-                        modifier = Modifier.weight(1f)
+                        text = "All",
+                        selected =
+                            selectedFilter == "All",
+                        modifier =
+                            Modifier.weight(1f)
                     ) {
                         selectedFilter = "All"
                     }
 
                     HistoryFilterButton(
-                        title = "Completed",
-                        selected = selectedFilter == "Completed",
-                        modifier = Modifier.weight(1f)
+                        text = "Completed",
+                        selected =
+                            selectedFilter == "Completed",
+                        modifier =
+                            Modifier.weight(1f)
                     ) {
                         selectedFilter = "Completed"
                     }
 
                     HistoryFilterButton(
-                        title = "Cancelled",
-                        selected = selectedFilter == "Cancelled",
-                        modifier = Modifier.weight(1f)
+                        text = "Cancelled",
+                        selected =
+                            selectedFilter == "Cancelled",
+                        modifier =
+                            Modifier.weight(1f)
                     ) {
                         selectedFilter = "Cancelled"
                     }
                 }
             }
 
-            // Result heading
+            /*
+             * Section title
+             */
             item {
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment =
+                        Alignment.CenterVertically,
+                    horizontalArrangement =
+                        Arrangement.SpaceBetween
                 ) {
 
                     Text(
-                        text = when (selectedFilter) {
-                            "Completed" -> "Completed Bookings"
-                            "Cancelled" -> "Cancelled Bookings"
-                            else -> "Previous Bookings"
-                        },
-                        fontSize = 17.sp,
+                        text = "Past Bookings",
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = HistoryGreen
                     )
 
-                    Text(
-                        text = "${filteredBookings.size} found",
-                        fontSize = 12.sp,
-                        color = HistoryGray
-                    )
+                    if (!isLoading) {
+
+                        Text(
+                            text =
+                                "${filteredBookings.size} found",
+                            fontSize = 12.sp,
+                            color = HistoryTextSecondary
+                        )
+                    }
                 }
             }
 
-            if (filteredBookings.isEmpty()) {
+            /*
+             * Loading / Error / Empty / Data states
+             */
+            when {
 
-                item {
-                    EmptyHistoryView()
+                isLoading -> {
+
+                    item {
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 60.dp),
+                            contentAlignment =
+                                Alignment.Center
+                        ) {
+
+                            CircularProgressIndicator(
+                                color = HistoryAccentGreen
+                            )
+                        }
+                    }
                 }
 
-            } else {
+                errorMessage != null -> {
 
-                items(
-                    items = filteredBookings,
-                    key = { it.id }
-                ) { booking ->
+                    item {
 
-                    HistoryBookingCard(
-                        booking = booking,
-                        onClick = {
-                            onBookingClick(booking.id)
+                        HistoryErrorCard(
+                            message =
+                                errorMessage
+                                    ?: "Unable to load history."
+                        )
+                    }
+                }
+
+                filteredBookings.isEmpty() -> {
+
+                    item {
+
+                        EmptyHistoryView(
+                            hasSearchOrFilter =
+                                searchText.isNotBlank() ||
+                                        selectedFilter != "All"
+                        )
+                    }
+                }
+
+                else -> {
+
+                    items(
+                        items = filteredBookings,
+                        key = { booking ->
+                            booking.id
                         }
-                    )
+                    ) { booking ->
+
+                        HistoryBookingCard(
+                            booking = booking,
+                            onClick = {
+                                onBookingClick(
+                                    booking.id
+                                )
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -278,7 +442,7 @@ fun BookingHistoryScreen(
 
 @Composable
 private fun HistoryFilterButton(
-    title: String,
+    text: String,
     selected: Boolean,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
@@ -289,19 +453,17 @@ private fun HistoryFilterButton(
         Button(
             onClick = onClick,
             modifier = modifier,
+            shape = RoundedCornerShape(22.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = HistoryGreen
             ),
-            shape = RoundedCornerShape(20.dp),
-            contentPadding = PaddingValues(
-                horizontal = 4.dp,
-                vertical = 8.dp
-            )
+            contentPadding =
+                PaddingValues(vertical = 10.dp)
         ) {
 
             Text(
-                text = title,
-                fontSize = 11.sp
+                text = text,
+                fontSize = 12.sp
             )
         }
 
@@ -310,16 +472,14 @@ private fun HistoryFilterButton(
         OutlinedButton(
             onClick = onClick,
             modifier = modifier,
-            shape = RoundedCornerShape(20.dp),
-            contentPadding = PaddingValues(
-                horizontal = 4.dp,
-                vertical = 8.dp
-            )
+            shape = RoundedCornerShape(22.dp),
+            contentPadding =
+                PaddingValues(vertical = 10.dp)
         ) {
 
             Text(
-                text = title,
-                fontSize = 11.sp,
+                text = text,
+                fontSize = 12.sp,
                 color = HistoryGreen
             )
         }
@@ -353,12 +513,15 @@ private fun HistoryBookingCard(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
+                verticalAlignment =
+                    Alignment.Top,
+                horizontalArrangement =
+                    Arrangement.SpaceBetween
             ) {
 
                 Column(
-                    modifier = Modifier.weight(1f)
+                    modifier =
+                        Modifier.weight(1f)
                 ) {
 
                     Text(
@@ -369,13 +532,14 @@ private fun HistoryBookingCard(
                     )
 
                     Spacer(
-                        modifier = Modifier.height(4.dp)
+                        modifier =
+                            Modifier.height(4.dp)
                     )
 
                     Text(
                         text = booking.id,
                         fontSize = 11.sp,
-                        color = HistoryGray
+                        color = HistoryTextSecondary
                     )
                 }
 
@@ -385,75 +549,87 @@ private fun HistoryBookingCard(
             }
 
             Spacer(
-                modifier = Modifier.height(16.dp)
+                modifier =
+                    Modifier.height(14.dp)
             )
 
-            HistoryInfoRow(
+            HistoryInformationRow(
                 icon = Icons.Default.LocationOn,
                 text = booking.location
             )
 
             Spacer(
-                modifier = Modifier.height(9.dp)
+                modifier =
+                    Modifier.height(10.dp)
             )
 
-            HistoryInfoRow(
+            HistoryInformationRow(
                 icon = Icons.Default.CalendarMonth,
                 text = booking.date
             )
 
             Spacer(
-                modifier = Modifier.height(9.dp)
+                modifier =
+                    Modifier.height(10.dp)
             )
 
-            HistoryInfoRow(
+            HistoryInformationRow(
                 icon = Icons.Default.Schedule,
                 text = booking.time
             )
 
             Spacer(
-                modifier = Modifier.height(9.dp)
+                modifier =
+                    Modifier.height(10.dp)
             )
 
-            HistoryInfoRow(
+            HistoryInformationRow(
                 icon = Icons.Default.Bolt,
                 text = booking.energyAmount
             )
 
             Spacer(
-                modifier = Modifier.height(15.dp)
+                modifier =
+                    Modifier.height(14.dp)
             )
 
             HorizontalDivider(
-                color = Color(0xFFEAEAEA)
-            )
-
-            Spacer(
-                modifier = Modifier.height(12.dp)
+                color = HistoryBorder
             )
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        onClick()
+                    }
+                    .padding(top = 13.dp),
+                horizontalArrangement =
+                    Arrangement.End,
+                verticalAlignment =
+                    Alignment.CenterVertically
             ) {
 
                 Text(
                     text = "View Details",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = HistoryAccentGreen
+                    color = HistoryAccentGreen,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
 
                 Spacer(
-                    modifier = Modifier.width(4.dp)
+                    modifier =
+                        Modifier.width(4.dp)
                 )
 
                 Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = "View booking details",
+                    imageVector =
+                        Icons.Default.ChevronRight,
+                    contentDescription =
+                        "View booking details",
                     tint = HistoryAccentGreen,
-                    modifier = Modifier.size(18.dp)
+                    modifier =
+                        Modifier.size(18.dp)
                 )
             }
         }
@@ -461,30 +637,33 @@ private fun HistoryBookingCard(
 }
 
 @Composable
-private fun HistoryInfoRow(
+private fun HistoryInformationRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     text: String
 ) {
 
     Row(
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment =
+            Alignment.CenterVertically
     ) {
 
         Icon(
             imageVector = icon,
             contentDescription = null,
             tint = HistoryAccentGreen,
-            modifier = Modifier.size(18.dp)
+            modifier =
+                Modifier.size(18.dp)
         )
 
         Spacer(
-            modifier = Modifier.width(10.dp)
+            modifier =
+                Modifier.width(10.dp)
         )
 
         Text(
             text = text,
             fontSize = 13.sp,
-            color = Color(0xFF444444)
+            color = Color(0xFF555555)
         )
     }
 }
@@ -495,97 +674,177 @@ private fun HistoryStatusBadge(
 ) {
 
     val backgroundColor =
-        when (status.lowercase()) {
+        when {
 
-            "completed" ->
-                Color(0xFFE4F4EA)
+            status.equals(
+                "Completed",
+                ignoreCase = true
+            ) -> HistoryLightGreen
 
-            "cancelled" ->
-                Color(0xFFFFE4E1)
+            status.equals(
+                "Cancelled",
+                ignoreCase = true
+            ) -> HistoryCancelledBackground
 
-            else ->
-                Color(0xFFEDEDED)
+            status.equals(
+                "Pending",
+                ignoreCase = true
+            ) -> HistoryPendingBackground
+
+            else -> Color(0xFFEEEEEE)
         }
 
     val textColor =
-        when (status.lowercase()) {
+        when {
 
-            "completed" ->
-                Color(0xFF19733E)
+            status.equals(
+                "Completed",
+                ignoreCase = true
+            ) -> HistoryAccentGreen
 
-            "cancelled" ->
-                Color(0xFFB3261E)
+            status.equals(
+                "Cancelled",
+                ignoreCase = true
+            ) -> HistoryCancelledText
 
-            else ->
-                Color.DarkGray
+            status.equals(
+                "Pending",
+                ignoreCase = true
+            ) -> HistoryPendingText
+
+            else -> Color.DarkGray
         }
 
     Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = backgroundColor
+        color = backgroundColor,
+        shape = RoundedCornerShape(18.dp)
     ) {
 
         Text(
             text = status,
-            color = textColor,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(
                 horizontal = 12.dp,
-                vertical = 6.dp
-            )
+                vertical = 7.dp
+            ),
+            color = textColor,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium
         )
     }
 }
 
 @Composable
-private fun EmptyHistoryView() {
+private fun EmptyHistoryView(
+    hasSearchOrFilter: Boolean
+) {
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 60.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(
+                top = 70.dp,
+                bottom = 70.dp
+            ),
+        horizontalAlignment =
+            Alignment.CenterHorizontally
     ) {
 
         Box(
             modifier = Modifier
-                .size(64.dp)
+                .size(72.dp)
                 .background(
-                    Color(0xFFE5F2EB),
-                    CircleShape
+                    color = HistoryLightGreen,
+                    shape =
+                        RoundedCornerShape(36.dp)
                 ),
-            contentAlignment = Alignment.Center
+            contentAlignment =
+                Alignment.Center
         ) {
 
             Icon(
                 imageVector = Icons.Default.History,
                 contentDescription = null,
                 tint = HistoryAccentGreen,
-                modifier = Modifier.size(30.dp)
+                modifier =
+                    Modifier.size(34.dp)
             )
         }
 
         Spacer(
-            modifier = Modifier.height(16.dp)
+            modifier =
+                Modifier.height(18.dp)
         )
 
         Text(
-            text = "No booking history found",
-            fontSize = 17.sp,
+            text =
+                if (hasSearchOrFilter)
+                    "No matching bookings"
+                else
+                    "No booking history yet",
+            fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
             color = HistoryGreen
         )
 
         Spacer(
-            modifier = Modifier.height(6.dp)
+            modifier =
+                Modifier.height(7.dp)
         )
 
         Text(
-            text = "Try changing your search or filter.",
+            text =
+                if (hasSearchOrFilter)
+                    "Try changing your search or filter."
+                else
+                    "Completed and cancelled bookings will appear here.",
             fontSize = 13.sp,
-            color = HistoryGray
+            color = HistoryTextSecondary
         )
+    }
+}
+
+@Composable
+private fun HistoryErrorCard(
+    message: String
+) {
+
+    Card(
+        modifier =
+            Modifier.fillMaxWidth(),
+        shape =
+            RoundedCornerShape(14.dp),
+        colors =
+            CardDefaults.cardColors(
+                containerColor =
+                    Color(0xFFFFEBEE)
+            )
+    ) {
+
+        Row(
+            modifier =
+                Modifier.padding(16.dp),
+            verticalAlignment =
+                Alignment.CenterVertically
+        ) {
+
+            Icon(
+                imageVector =
+                    Icons.Default.ErrorOutline,
+                contentDescription = null,
+                tint = HistoryCancelledText
+            )
+
+            Spacer(
+                modifier =
+                    Modifier.width(10.dp)
+            )
+
+            Text(
+                text = message,
+                color = HistoryCancelledText,
+                fontSize = 13.sp
+            )
+        }
     }
 }
 
@@ -604,8 +863,10 @@ private fun HistoryBottomBar(
             selected = false,
             onClick = onHomeClick,
             icon = {
+
                 Icon(
-                    imageVector = Icons.Default.Home,
+                    imageVector =
+                        Icons.Default.Home,
                     contentDescription = "Home"
                 )
             },
@@ -615,25 +876,36 @@ private fun HistoryBottomBar(
         )
 
         NavigationBarItem(
-            selected = false,
+            selected = true,
             onClick = onBookingsClick,
             icon = {
+
                 Icon(
-                    imageVector = Icons.Default.CalendarMonth,
+                    imageVector =
+                        Icons.Default.CalendarMonth,
                     contentDescription = "Bookings"
                 )
             },
             label = {
                 Text("Bookings")
-            }
+            },
+            colors =
+                NavigationBarItemDefaults.colors(
+                    selectedIconColor =
+                        HistoryAccentGreen,
+                    selectedTextColor =
+                        HistoryAccentGreen
+                )
         )
 
         NavigationBarItem(
             selected = false,
             onClick = onProfileClick,
             icon = {
+
                 Icon(
-                    imageVector = Icons.Default.Person,
+                    imageVector =
+                        Icons.Default.Person,
                     contentDescription = "Profile"
                 )
             },
