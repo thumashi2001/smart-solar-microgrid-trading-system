@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import com.microgrid.app.data.Slot
 import com.microgrid.app.ui.screens.*
 import com.microgrid.app.ui.theme.MicrogridAppTheme
 
@@ -20,6 +21,10 @@ sealed class Screen {
     object Notifications : Screen()
     object HelpSupport : Screen()
     object About : Screen()
+    // ── Component 2: Energy Reservation & Slot Management ──────────────
+    object SlotSelection : Screen()
+    object MyBookings : Screen()
+    data class ReservationSummary(val slot: Slot) : Screen()
 }
 
 class MainActivity : ComponentActivity() {
@@ -35,7 +40,7 @@ class MainActivity : ComponentActivity() {
                     var loggedInFullName by remember { mutableStateOf("") }
                     var loggedInNic by remember { mutableStateOf("") }
 
-                    when (currentScreen) {
+                    when (val screen = currentScreen) {
                         is Screen.Login -> {
                             LoginScreen(
                                 onLoginSuccess = { _, fullName, _, nic ->
@@ -61,6 +66,8 @@ class MainActivity : ComponentActivity() {
                                 onNotifications = { currentScreen = Screen.Notifications },
                                 onHelpSupport = { currentScreen = Screen.HelpSupport },
                                 onAbout = { currentScreen = Screen.About },
+                                onMyBookings = { currentScreen = Screen.MyBookings },
+                                onBookSlot = { currentScreen = Screen.SlotSelection },
                                 onLogout = {
                                     loggedInFullName = ""
                                     loggedInNic = ""
@@ -92,6 +99,31 @@ class MainActivity : ComponentActivity() {
                         }
                         is Screen.About -> {
                             AboutScreen(onBack = { currentScreen = Screen.Profile })
+                        }
+                        // ── Component 2 screens ─────────────────────────────
+                        is Screen.SlotSelection -> {
+                            SlotSelectionScreen(
+                                prosumerNic = loggedInNic,
+                                onBack = { currentScreen = Screen.Profile },
+                                onSlotSelected = { slot ->
+                                    currentScreen = Screen.ReservationSummary(slot)
+                                }
+                            )
+                        }
+                        is Screen.ReservationSummary -> {
+                            ReservationSummaryScreen(
+                                slot = screen.slot,
+                                prosumerNic = loggedInNic,
+                                onBack = { currentScreen = Screen.SlotSelection },
+                                onBooked = { currentScreen = Screen.MyBookings }
+                            )
+                        }
+                        is Screen.MyBookings -> {
+                            MyBookingsScreen(
+                                prosumerNic = loggedInNic,
+                                onBack = { currentScreen = Screen.Profile },
+                                onBookNew = { currentScreen = Screen.SlotSelection }
+                            )
                         }
                     }
                 }

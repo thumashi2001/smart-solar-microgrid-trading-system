@@ -142,6 +142,12 @@ function Layout({ children }) {
             "Microgrid Nodes",
             "☀️"
           )}
+
+          {navItem(
+            "/energy-slots",
+            "Energy Slots",
+            "⚡"
+          )}
         </div>
 
         {/* LOGOUT */}
