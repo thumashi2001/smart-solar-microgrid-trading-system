@@ -55,3 +55,24 @@ GET {{MicrogridApi_HostAddress}}/api/reservations/history/200884501266
 Accept: application/json
 
 ###
+
+@Ngrok_HostAddress = https://query-flanked-unfailing.ngrok-free.dev
+
+### Test nodes
+GET {{Ngrok_HostAddress}}/api/microgridnodes
+Accept: application/json
+ngrok-skip-browser-warning: true
+
+###
+
+### Test slots
+GET {{Ngrok_HostAddress}}/api/slots
+Accept: application/json
+ngrok-skip-browser-warning: true
+
+###
+
+### Test Lehansa reservation history
+GET {{Ngrok_HostAddress}}/api/reservations/history/200884501266
+Accept: application/json
+ngrok-skip-browser-warning: true
