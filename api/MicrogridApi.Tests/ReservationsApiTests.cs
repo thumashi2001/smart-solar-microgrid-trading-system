@@ -88,6 +88,18 @@ namespace MicrogridApi.Tests.Integration
             }
         }
 
+        private async Task SeedProsumerAsync(string nic = "123456789V", string status = "active")
+        {
+            var collection = _database!.GetCollection<Prosumer>("prosumers");
+            await collection.InsertOneAsync(new Prosumer { Nic = nic, Status = status });
+        }
+
+        private async Task SeedStationAsync(string stationId = "ST-TEST", string status = "active")
+        {
+            var collection = _database!.GetCollection<MicrogridNode>("SolarStationInfo");
+            await collection.InsertOneAsync(new MicrogridNode { NodeId = stationId, Status = status });
+        }
+
         private async Task<EnergyBookingSlot> SeedSlotAsync(
             string slotId,
             string stationId = "ST-TEST",
@@ -144,6 +156,8 @@ namespace MicrogridApi.Tests.Integration
         [Fact]
         public async Task Post_ValidReservation_CreatesReservationAndDecrementsSlotAvailability()
         {
+            await SeedProsumerAsync();
+            await SeedStationAsync();
             var slot = await SeedSlotAsync("SLOT-CREATE-01", capacity: 5, availability: 5);
 
             var req = new CreateReservationRequest
@@ -178,6 +192,8 @@ namespace MicrogridApi.Tests.Integration
         [Fact]
         public async Task Post_ZeroAvailabilitySlot_Returns400_DoesNotCreateReservation()
         {
+            await SeedProsumerAsync();
+            await SeedStationAsync();
             var slot = await SeedSlotAsync("SLOT-ZERO-AVAIL", capacity: 5, availability: 0);
 
             var req = new CreateReservationRequest
@@ -200,6 +216,8 @@ namespace MicrogridApi.Tests.Integration
         [Fact]
         public async Task Post_InvalidNicFormat_Returns400()
         {
+            await SeedProsumerAsync("INVALID-NIC-FORMAT");
+            await SeedStationAsync();
             var slot = await SeedSlotAsync("SLOT-INVALID-NIC", capacity: 5, availability: 5);
 
             var req = new CreateReservationRequest
