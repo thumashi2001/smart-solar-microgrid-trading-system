@@ -153,14 +153,20 @@ class MainActivity : ComponentActivity() {
                                     loggedInFullName = ""
                                     loggedInNic = ""
                                     currentScreen = Screen.Login
-                                }
+                                },
+                                onBackToHome = { currentScreen = Screen.Dashboard }
                             )
                         }
                         is Screen.MyProfile -> {
                             MyProfileScreen(
                                 fullName = loggedInFullName,
                                 nic = loggedInNic,
-                                onBack = { currentScreen = Screen.Profile }
+                                onBack = { currentScreen = Screen.Profile },
+                                onAccountDeactivated = {
+                                    loggedInFullName = ""
+                                    loggedInNic = ""
+                                    currentScreen = Screen.Login
+                                }
                             )
                         }
                         is Screen.ChangePassword -> {

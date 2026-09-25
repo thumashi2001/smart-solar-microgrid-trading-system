@@ -40,6 +40,13 @@ interface ApiService {
     ): Response<Any>
 
 
+    // Deactivate prosumer's own account
+    @PATCH("api/prosumers/{nic}/deactivate")
+    suspend fun deactivateProsumer(
+        @Path("nic") nic: String
+    ): Response<Any>
+
+
     // Get reservation history for a specific prosumer
     @GET("api/reservations/history/{prosumerNic}")
     suspend fun getReservationHistory(

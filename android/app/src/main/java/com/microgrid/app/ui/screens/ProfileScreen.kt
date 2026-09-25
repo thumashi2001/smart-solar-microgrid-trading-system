@@ -33,75 +33,92 @@ fun ProfileScreen(
     onNotifications: () -> Unit,
     onHelpSupport: () -> Unit,
     onAbout: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onBackToHome: () -> Unit
 ) {
     var photoUri by remember { mutableStateOf<Uri?>(null) }
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? -> photoUri = uri }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(PageBg)
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Spacer(modifier = Modifier.height(24.dp))
+    Column(modifier = Modifier.fillMaxSize().background(PageBg)) {
 
-        Box(
+        Row(
             modifier = Modifier
-                .size(80.dp)
-                .clip(CircleShape)
-                .background(Color(0xFFD8D4CB))
-                .clickable { launcher.launch("image/*") },
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .background(Color.White)
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            if (photoUri != null) {
-                Image(
-                    painter = rememberAsyncImagePainter(photoUri),
-                    contentDescription = "Profile photo",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Icon(Icons.Filled.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(40.dp))
+            IconButton(onClick = onBackToHome) {
+                Icon(Icons.Filled.ArrowBack, contentDescription = "Back to Home")
             }
-        }
-        Spacer(modifier = Modifier.height(6.dp))
-        Text("Tap to change photo", fontSize = 11.sp, color = Color.Gray)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(fullName, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkGreen)
-        Text(nic, fontSize = 13.sp, color = Color.Gray)
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column {
-                ProfileMenuItem(Icons.Filled.Person, "My Profile", onMyProfile)
-                ProfileMenuItem(Icons.Filled.Lock, "Change Password", onChangePassword)
-                ProfileMenuItem(Icons.Filled.Notifications, "Notifications", onNotifications)
-                ProfileMenuItem(Icons.Filled.Info, "Help & Support", onHelpSupport)
-                ProfileMenuItem(Icons.Filled.Info, "About", onAbout)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        OutlinedButton(
-            onClick = onLogout,
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-            shape = RoundedCornerShape(10.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB14A3C))
-        ) {
-            Icon(Icons.Filled.Logout, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Logout")
+            Text("Profile", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = DarkGreen)
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFD8D4CB))
+                    .clickable { launcher.launch("image/*") },
+                contentAlignment = Alignment.Center
+            ) {
+                if (photoUri != null) {
+                    Image(
+                        painter = rememberAsyncImagePainter(photoUri),
+                        contentDescription = "Profile photo",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(Icons.Filled.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(40.dp))
+                }
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text("Tap to change photo", fontSize = 11.sp, color = Color.Gray)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(fullName, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkGreen)
+            Text(nic, fontSize = 13.sp, color = Color.Gray)
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column {
+                    ProfileMenuItem(Icons.Filled.Person, "My Profile", onMyProfile)
+                    ProfileMenuItem(Icons.Filled.Lock, "Change Password", onChangePassword)
+                    ProfileMenuItem(Icons.Filled.Notifications, "Notifications", onNotifications)
+                    ProfileMenuItem(Icons.Filled.Info, "Help & Support", onHelpSupport)
+                    ProfileMenuItem(Icons.Filled.Info, "About", onAbout)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            OutlinedButton(
+                onClick = onLogout,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB14A3C))
+            ) {
+                Icon(Icons.Filled.Logout, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Logout")
+            }
         }
     }
 }
