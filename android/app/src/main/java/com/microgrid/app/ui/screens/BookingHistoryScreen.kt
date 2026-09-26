@@ -18,6 +18,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.microgrid.app.data.BookingUiModel
 import com.microgrid.app.data.RetrofitClient
+import androidx.compose.ui.platform.LocalContext
+import com.microgrid.app.data.toEntity
+import com.microgrid.app.data.toUiModel
+import com.microgrid.app.local.AppDatabase
 
 private val HistoryGreen = Color(0xFF07553F)
 private val HistoryAccentGreen = Color(0xFF148A61)
@@ -53,6 +57,11 @@ fun BookingHistoryScreen(
     var errorMessage by remember {
         mutableStateOf<String?>(null)
     }
+    val context = LocalContext.current
+
+    val bookingDao = remember {
+        AppDatabase.getDatabase(context).bookingDao()
+    }
 
     /*
      * Load the logged-in prosumer's reservation history from the API.
@@ -70,16 +79,58 @@ fun BookingHistoryScreen(
         isLoading = true
         errorMessage = null
 
+        /*
+         * STEP 1:
+         * Load locally cached booking history first.
+         *
+         * This allows the screen to continue working when
+         * the Web API or network connection is unavailable.
+         */
+        try {
+
+            val cachedBookings =
+                bookingDao.getBookingsByProsumer(nic)
+
+            bookings = cachedBookings
+                .map { entity ->
+                    entity.toUiModel()
+                }
+                .filter { booking ->
+
+                    booking.status.equals(
+                        "Completed",
+                        ignoreCase = true
+                    ) ||
+                            booking.status.equals(
+                                "Cancelled",
+                                ignoreCase = true
+                            )
+                }
+
+        } catch (e: Exception) {
+
+            // A local-cache error should not prevent
+            // the application from trying the Web API.
+        }
+
+        /*
+         * STEP 2:
+         * Try to refresh the local database using
+         * the latest information from the Web API.
+         */
         try {
 
             val reservationResponse =
-                RetrofitClient.instance.getReservationHistory(nic)
+                RetrofitClient.instance
+                    .getReservationHistory(nic)
 
             val slotResponse =
-                RetrofitClient.instance.getSlots()
+                RetrofitClient.instance
+                    .getSlots()
 
             val nodeResponse =
-                RetrofitClient.instance.getMicrogridNodes()
+                RetrofitClient.instance
+                    .getMicrogridNodes()
 
             if (
                 reservationResponse.isSuccessful &&
@@ -87,38 +138,46 @@ fun BookingHistoryScreen(
                 nodeResponse.isSuccessful
             ) {
 
-                val reservations = reservationResponse.body().orEmpty()
-                val slots = slotResponse.body().orEmpty()
-                val nodes = nodeResponse.body().orEmpty()
+                val reservations =
+                    reservationResponse.body().orEmpty()
+
+                val slots =
+                    slotResponse.body().orEmpty()
+
+                val nodes =
+                    nodeResponse.body().orEmpty()
 
                 /*
-                 * Booking History should contain reservations that are no
-                 * longer current. Pending and Approved reservations remain
-                 * under My Bookings.
+                 * Convert ALL reservations into BookingUiModel.
+                 *
+                 * We intentionally do not filter to Completed /
+                 * Cancelled yet because the Room bookings table
+                 * is shared by:
+                 *
+                 * - My Bookings
+                 * - Booking History
+                 * - Search
+                 * - Booking Details
                  */
-                bookings = reservations
-                    .filter { reservation ->
-                        reservation.status.equals(
-                            "Completed",
-                            ignoreCase = true
-                        ) ||
-                                reservation.status.equals(
-                                    "Cancelled",
-                                    ignoreCase = true
-                                )
-                    }
-                    .map { reservation ->
+                val latestBookings =
+                    reservations.map { reservation ->
 
-                        val slot = slots.find {
-                            it.slotId == reservation.slotId
-                        }
+                        val slot =
+                            slots.find { currentSlot ->
+                                currentSlot.slotId ==
+                                        reservation.slotId
+                            }
 
-                        val node = nodes.find {
-                            it.nodeId == reservation.stationId
-                        }
+                        val node =
+                            nodes.find { currentNode ->
+                                currentNode.nodeId ==
+                                        reservation.stationId
+                            }
 
                         BookingUiModel(
-                            id = reservation.reservationId,
+
+                            id =
+                                reservation.reservationId,
 
                             stationName =
                                 node?.nodeName
@@ -129,42 +188,242 @@ fun BookingHistoryScreen(
                                     ?: "Unknown location",
 
                             date =
-                                slot?.date?.substringBefore("T")
+                                slot?.date
+                                    ?.substringBefore("T")
                                     ?: "Date unavailable",
 
                             time =
                                 if (slot != null) {
+
                                     "${slot.startTime} - ${slot.endTime}"
+
                                 } else {
+
                                     "Time unavailable"
                                 },
 
                             /*
-                             * The current API response does not contain
-                             * a separate reserved energy amount.
-                             * Therefore slot capacity is displayed here.
+                             * ReservationResponse currently does not
+                             * contain a separate reserved-energy value,
+                             * so the existing UI uses slot capacity.
                              */
                             energyAmount =
                                 if (slot != null) {
+
                                     "${slot.capacity} kWh"
+
                                 } else {
+
                                     "Capacity unavailable"
                                 },
 
-                            status = reservation.status
+                            status =
+                                reservation.status
                         )
                     }
 
+                /*
+                 * STEP 3:
+                 * Convert the API results into Room entities.
+                 *
+                 * Preserve the real stationId, slotId and
+                 * updatedAt values from each reservation.
+                 */
+                val bookingEntities =
+                    reservations.map { reservation ->
+
+                        val slot =
+                            slots.find { currentSlot ->
+                                currentSlot.slotId ==
+                                        reservation.slotId
+                            }
+
+                        val node =
+                            nodes.find { currentNode ->
+                                currentNode.nodeId ==
+                                        reservation.stationId
+                            }
+
+                        val uiModel =
+                            BookingUiModel(
+
+                                id =
+                                    reservation.reservationId,
+
+                                stationName =
+                                    node?.nodeName
+                                        ?: reservation.stationId,
+
+                                location =
+                                    node?.location
+                                        ?: "Unknown location",
+
+                                date =
+                                    slot?.date
+                                        ?.substringBefore("T")
+                                        ?: "Date unavailable",
+
+                                time =
+                                    if (slot != null) {
+
+                                        "${slot.startTime} - ${slot.endTime}"
+
+                                    } else {
+
+                                        "Time unavailable"
+                                    },
+
+                                energyAmount =
+                                    if (slot != null) {
+
+                                        "${slot.capacity} kWh"
+
+                                    } else {
+
+                                        "Capacity unavailable"
+                                    },
+
+                                status =
+                                    reservation.status
+                            )
+
+                        uiModel.toEntity(
+                            prosumerNic = nic,
+                            stationId =
+                                reservation.stationId,
+                            slotId =
+                                reservation.slotId,
+                            updatedAt =
+                                reservation.updatedAt
+                        )
+                    }
+
+                /*
+                 * STEP 4:
+                 * Save/update API records in SQLite.
+                 *
+                 * BookingDao uses REPLACE on conflict and
+                 * reservationId is the primary key.
+                 *
+                 * Therefore:
+                 *
+                 * Pending -> Approved
+                 * Pending -> Cancelled
+                 * Approved -> Completed
+                 *
+                 * will update the existing local record.
+                 */
+                if (bookingEntities.isNotEmpty()) {
+
+                    bookingDao.insertBookings(
+                        bookingEntities
+                    )
+                }
+
+                /*
+                 * STEP 5:
+                 * History displays only reservations that
+                 * are no longer current.
+                 */
+                bookings =
+                    latestBookings.filter { booking ->
+
+                        booking.status.equals(
+                            "Completed",
+                            ignoreCase = true
+                        ) ||
+                                booking.status.equals(
+                                    "Cancelled",
+                                    ignoreCase = true
+                                )
+                    }
+
+                errorMessage = null
+
             } else {
 
-                errorMessage =
-                    "Unable to load booking history from the server."
+                /*
+                 * The server responded, but one or more
+                 * requests were unsuccessful.
+                 *
+                 * If cached history exists, keep showing it.
+                 */
+                if (bookings.isEmpty()) {
+
+                    errorMessage =
+                        """
+                    Unable to refresh booking history.
+
+                    Reservation API: ${reservationResponse.code()}
+                    Slots API: ${slotResponse.code()}
+                    Nodes API: ${nodeResponse.code()}
+                    """.trimIndent()
+                }
             }
 
         } catch (e: Exception) {
 
-            errorMessage =
-                e.message ?: "Unable to connect to the server."
+            /*
+             * Network/API failure:
+             *
+             * Try Room once more in case the cache was
+             * populated previously.
+             */
+            try {
+
+                val cachedBookings =
+                    bookingDao.getBookingsByProsumer(nic)
+
+                val cachedHistory =
+                    cachedBookings
+                        .map { entity ->
+                            entity.toUiModel()
+                        }
+                        .filter { booking ->
+
+                            booking.status.equals(
+                                "Completed",
+                                ignoreCase = true
+                            ) ||
+                                    booking.status.equals(
+                                        "Cancelled",
+                                        ignoreCase = true
+                                    )
+                        }
+
+                if (cachedHistory.isNotEmpty()) {
+
+                    bookings = cachedHistory
+                    errorMessage = null
+
+                } else {
+
+                    /*
+                     * An empty history can also be legitimate.
+                     *
+                     * If local bookings exist but none are
+                     * Completed/Cancelled, show the normal
+                     * empty-history screen instead of treating
+                     * that as an error.
+                     */
+                    if (cachedBookings.isNotEmpty()) {
+
+                        bookings = emptyList()
+                        errorMessage = null
+
+                    } else {
+
+                        errorMessage =
+                            "Unable to connect to the server and no cached booking history is available."
+                    }
+                }
+
+            } catch (cacheException: Exception) {
+
+                errorMessage =
+                    e.message
+                        ?: "Unable to connect to the server."
+            }
 
         } finally {
 

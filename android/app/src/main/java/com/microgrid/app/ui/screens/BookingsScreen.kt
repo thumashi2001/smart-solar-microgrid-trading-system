@@ -19,7 +19,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.microgrid.app.data.BookingUiModel
 import com.microgrid.app.data.RetrofitClient
-import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.LocalContext
+import com.microgrid.app.data.toEntity
+import com.microgrid.app.data.toUiModel
+import com.microgrid.app.local.AppDatabase
 
 private val BookingGreen = Color(0xFF0B4F3C)
 private val BookingAccentGreen = Color(0xFF1E8754)
@@ -42,6 +45,13 @@ fun BookingsScreen(
     var bookings by remember { mutableStateOf<List<BookingUiModel>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val database = remember {
+        AppDatabase.getDatabase(context)
+    }
+    val bookingDao = remember {
+        database.bookingDao()
+    }
 
     LaunchedEffect(nic) {
 
@@ -54,8 +64,29 @@ fun BookingsScreen(
         isLoading = true
         errorMessage = null
 
+        // First load locally cached bookings.
+        // This means previously synchronized data can be displayed
+        // even if the API is temporarily unavailable.
+        try {
+            val cachedBookings =
+                bookingDao.getBookingsByProsumer(nic)
+
+            if (cachedBookings.isNotEmpty()) {
+                bookings = cachedBookings
+                    .map { it.toUiModel() }
+                    .filter {
+                        it.status.equals("Pending", ignoreCase = true) ||
+                                it.status.equals("Approved", ignoreCase = true)
+                    }
+            }
+        } catch (e: Exception) {
+            // Cache failure should not stop the API request.
+        }
+
         try {
 
+            // Request the latest reservation information
+            // from the central Web API.
             val reservationResponse =
                 RetrofitClient.instance.getReservationHistory(nic)
 
@@ -80,12 +111,12 @@ fun BookingsScreen(
                 val nodes =
                     nodeResponse.body().orEmpty()
 
-                bookings = reservations
-                    .filter {
-                        it.status.equals("Pending", ignoreCase = true) ||
-                                it.status.equals("Approved", ignoreCase = true)
-                    }
-                    .map { reservation ->
+                /*
+                 * Combine reservation, slot and microgrid-node
+                 * information into the model used by the UI.
+                 */
+                val latestBookings =
+                    reservations.map { reservation ->
 
                         val slot = slots.find {
                             it.slotId == reservation.slotId
@@ -99,10 +130,12 @@ fun BookingsScreen(
                             id = reservation.reservationId,
 
                             stationName =
-                                node?.nodeName ?: reservation.stationId,
+                                node?.nodeName
+                                    ?: reservation.stationId,
 
                             location =
-                                node?.location ?: "Unknown location",
+                                node?.location
+                                    ?: "Unknown location",
 
                             date =
                                 slot?.date?.substringBefore("T")
@@ -126,19 +159,113 @@ fun BookingsScreen(
                         )
                     }
 
+                /*
+                 * Replace this prosumer's cached records with the
+                 * latest data returned by the server.
+                 */
+                bookingDao.deleteBookingsByProsumer(nic)
+
+                val entities =
+                    reservations.map { reservation ->
+
+                        val slot = slots.find {
+                            it.slotId == reservation.slotId
+                        }
+
+                        val node = nodes.find {
+                            it.nodeId == reservation.stationId
+                        }
+
+                        BookingUiModel(
+                            id = reservation.reservationId,
+
+                            stationName =
+                                node?.nodeName
+                                    ?: reservation.stationId,
+
+                            location =
+                                node?.location
+                                    ?: "Unknown location",
+
+                            date =
+                                slot?.date?.substringBefore("T")
+                                    ?: "Date unavailable",
+
+                            time =
+                                if (slot != null) {
+                                    "${slot.startTime} - ${slot.endTime}"
+                                } else {
+                                    "Time unavailable"
+                                },
+
+                            energyAmount =
+                                if (slot != null) {
+                                    "${slot.capacity} kWh"
+                                } else {
+                                    "Capacity unavailable"
+                                },
+
+                            status = reservation.status
+                        ).toEntity(
+                            prosumerNic = nic,
+                            stationId = reservation.stationId,
+                            slotId = reservation.slotId,
+                            updatedAt = reservation.updatedAt
+                        )
+                    }
+
+                if (entities.isNotEmpty()) {
+                    bookingDao.insertBookings(entities)
+                }
+
+                /*
+                 * My Bookings only displays current Pending
+                 * and Approved reservations.
+                 */
+                bookings =
+                    latestBookings.filter {
+                        it.status.equals(
+                            "Pending",
+                            ignoreCase = true
+                        ) ||
+                                it.status.equals(
+                                    "Approved",
+                                    ignoreCase = true
+                                )
+                    }
+
+                errorMessage = null
+
             } else {
 
-                errorMessage = """
-        Reservation API: ${reservationResponse.code()}
-        Slots API: ${slotResponse.code()}
-        Nodes API: ${nodeResponse.code()}
-    """.trimIndent()
+                /*
+                 * If the API fails but cached records exist,
+                 * continue displaying the local data.
+                 */
+                if (bookings.isEmpty()) {
+
+                    errorMessage =
+                        """
+                    Unable to load bookings.
+
+                    Reservation API: ${reservationResponse.code()}
+                    Slots API: ${slotResponse.code()}
+                    Nodes API: ${nodeResponse.code()}
+                    """.trimIndent()
+                }
             }
 
         } catch (e: Exception) {
 
-            errorMessage =
-                e.message ?: "Unable to connect to the server."
+            /*
+             * A network failure should not remove data that was
+             * already loaded from SQLite.
+             */
+            if (bookings.isEmpty()) {
+
+                errorMessage =
+                    "Unable to connect to the server and no cached bookings are available."
+            }
 
         } finally {
 
