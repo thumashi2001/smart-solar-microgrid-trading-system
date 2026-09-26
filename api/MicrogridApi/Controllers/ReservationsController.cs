@@ -36,6 +36,7 @@ public class ReservationsController : ControllerBase
     /// Returns all reservations.
     /// </summary>
     [HttpGet]
+    [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAll()
     {
         var reservations = await _db.EnergyReservations
@@ -50,6 +51,8 @@ public class ReservationsController : ControllerBase
     /// Returns one reservation using its MongoDB ID.
     /// </summary>
     [HttpGet("{id}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(string id)
     {
         if (!ObjectId.TryParse(id, out _))
@@ -74,6 +77,7 @@ public class ReservationsController : ControllerBase
     /// Returns reservation history for a prosumer.
     /// </summary>
     [HttpGet("history/{prosumerNic}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetHistory(string prosumerNic)
     {
         var reservations = await _db.EnergyReservations
@@ -88,6 +92,11 @@ public class ReservationsController : ControllerBase
     /// Creates a new reservation with atomic schedule validation, collision retry, and safe compensation.
     /// </summary>
     [HttpPost]
+    [ProducesResponseType(StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Create(CreateReservationRequest request)
     {
         if (!MongoDbIndexConfigurator.IndexesVerified && !await MongoDbIndexConfigurator.EnsureIndexesVerifiedAsync(_db))
@@ -285,6 +294,11 @@ public class ReservationsController : ControllerBase
     /// Explicitly verifies old-slot release result to prevent silent capacity leaks.
     /// </summary>
     [HttpPut("{id}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Update(string id, UpdateReservationRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.StationId) ||
@@ -561,6 +575,11 @@ public class ReservationsController : ControllerBase
     /// Cancels an existing reservation with optimistic concurrency, slot integrity, and non-misleading status reporting.
     /// </summary>
     [HttpDelete("{id}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Delete(string id)
     {
         // 1. Find reservation
