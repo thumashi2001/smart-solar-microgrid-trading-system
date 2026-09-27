@@ -9,10 +9,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.lifecycleScope
+import com.microgrid.app.local.AppDatabase
+import com.microgrid.app.local.SessionEntity
 import com.microgrid.app.ui.screens.*
 import com.microgrid.app.ui.theme.MicrogridAppTheme
 import com.smartsolar.microgrid.SmartSolarApp
+import com.smartsolar.microgrid.ui.login.LoginActivity
 import com.smartsolar.microgrid.ui.map.StationsMapActivity
 import com.smartsolar.microgrid.ui.operator.OperatorHomeActivity
 import com.smartsolar.microgrid.ui.prosumer.ProsumerQrEntryActivity
@@ -21,6 +23,16 @@ import kotlinx.coroutines.launch
 sealed class Screen {
     object Login : Screen()
     object Register : Screen()
+
+    object Dashboard : Screen()
+    object Bookings : Screen()
+    object BookingHistory : Screen()
+    object SearchBookings : Screen()
+
+    data class BookingDetails(
+        val bookingId: String
+    ) : Screen()
+
     object Profile : Screen()
     object MyProfile : Screen()
     object ChangePassword : Screen()
@@ -30,8 +42,8 @@ sealed class Screen {
 }
 
 /**
- * Thumashi auth/profile Compose host.
- * Also exposes Suwani QR entry and Maps from the profile menu so one app navigation covers both.
+ * Thumashi auth/profile/booking Compose host.
+ * Routes GridOperator to Suwani operator home; Prosumer keeps dashboard + QR/Maps entry points.
  */
 class MainActivity : ComponentActivity() {
 
@@ -39,6 +51,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        val db = AppDatabase.getDatabase(applicationContext)
         val startRegister = intent.getBooleanExtra(EXTRA_START_REGISTER, false)
         val openProfile = intent.getBooleanExtra(EXTRA_OPEN_PROFILE, false)
         val initialFullName = intent.getStringExtra(EXTRA_FULL_NAME).orEmpty()
@@ -48,7 +61,7 @@ class MainActivity : ComponentActivity() {
             MicrogridAppTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     var currentScreen by remember {
-                        mutableStateOf(
+                        mutableStateOf<Screen>(
                             when {
                                 startRegister -> Screen.Register
                                 openProfile && initialFullName.isNotBlank() -> Screen.Profile
@@ -56,18 +69,57 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                     }
-
                     var loggedInFullName by remember { mutableStateOf(initialFullName) }
                     var loggedInNic by remember { mutableStateOf(initialNic) }
+                    var isCheckingSession by remember { mutableStateOf(!openProfile && !startRegister) }
+                    val scope = rememberCoroutineScope()
+                    val smartSolarApp = application as SmartSolarApp
+
+                    LaunchedEffect(Unit) {
+                        if (!isCheckingSession) return@LaunchedEffect
+                        val session = db.sessionDao().getSession()
+                        if (session != null) {
+                            loggedInFullName = session.fullName
+                            loggedInNic = session.nic
+                            smartSolarApp.sessionManager.saveSession(
+                                token = session.token,
+                                role = session.role,
+                                fullName = session.fullName,
+                                identifier = session.nic.ifBlank { session.fullName },
+                            )
+                            when (session.role) {
+                                "GridOperator" -> {
+                                    startActivity(Intent(this@MainActivity, OperatorHomeActivity::class.java))
+                                    finish()
+                                    return@LaunchedEffect
+                                }
+                                else -> currentScreen = Screen.Dashboard
+                            }
+                        }
+                        isCheckingSession = false
+                    }
+
+                    if (isCheckingSession) {
+                        return@Surface
+                    }
 
                     when (currentScreen) {
                         is Screen.Login -> {
                             LoginScreen(
                                 onLoginSuccess = { role, fullName, token, nic ->
                                     loggedInFullName = fullName
-                                    loggedInNic = nic.ifBlank { "" }
-                                    lifecycleScope.launch {
-                                        (application as SmartSolarApp).sessionManager.saveSession(
+                                    loggedInNic = nic
+                                    scope.launch {
+                                        db.sessionDao().saveSession(
+                                            SessionEntity(
+                                                nic = nic,
+                                                fullName = fullName,
+                                                token = token,
+                                                role = role,
+                                                photoUri = null,
+                                            ),
+                                        )
+                                        smartSolarApp.sessionManager.saveSession(
                                             token = token,
                                             role = role,
                                             fullName = fullName,
@@ -79,7 +131,17 @@ class MainActivity : ComponentActivity() {
                                             startActivity(Intent(this@MainActivity, OperatorHomeActivity::class.java))
                                             finish()
                                         }
-                                        else -> currentScreen = Screen.Profile
+                                        "Prosumer" -> currentScreen = Screen.Dashboard
+                                        else -> {
+                                            // Do not elevate Backoffice/unknown roles into operator or prosumer flows.
+                                            scope.launch {
+                                                db.sessionDao().clearSession()
+                                                smartSolarApp.sessionManager.clearSession()
+                                            }
+                                            loggedInFullName = ""
+                                            loggedInNic = ""
+                                            currentScreen = Screen.Login
+                                        }
                                     }
                                 },
                                 onNavigateToRegister = { currentScreen = Screen.Register },
@@ -89,6 +151,50 @@ class MainActivity : ComponentActivity() {
                             RegisterScreen(
                                 onRegisterSuccess = { currentScreen = Screen.Login },
                                 onNavigateToLogin = { currentScreen = Screen.Login },
+                            )
+                        }
+                        is Screen.Dashboard -> {
+                            ProsumerDashboardScreen(
+                                fullName = loggedInFullName,
+                                nic = loggedInNic,
+                                onProfileClick = { currentScreen = Screen.Profile },
+                                onBookingsClick = { currentScreen = Screen.Bookings },
+                                onHistoryClick = { currentScreen = Screen.BookingHistory },
+                                onSearchClick = { currentScreen = Screen.SearchBookings },
+                            )
+                        }
+                        is Screen.Bookings -> {
+                            BookingsScreen(
+                                nic = loggedInNic,
+                                onBackClick = { currentScreen = Screen.Dashboard },
+                                onBookingClick = { bookingId -> currentScreen = Screen.BookingDetails(bookingId) },
+                                onHomeClick = { currentScreen = Screen.Dashboard },
+                                onProfileClick = { currentScreen = Screen.Profile },
+                            )
+                        }
+                        is Screen.BookingHistory -> {
+                            BookingHistoryScreen(
+                                nic = loggedInNic,
+                                onBackClick = { currentScreen = Screen.Dashboard },
+                                onBookingClick = { bookingId -> currentScreen = Screen.BookingDetails(bookingId) },
+                                onHomeClick = { currentScreen = Screen.Dashboard },
+                                onBookingsClick = { currentScreen = Screen.Bookings },
+                                onProfileClick = { currentScreen = Screen.Profile },
+                            )
+                        }
+                        is Screen.SearchBookings -> {
+                            SearchBookingsScreen(
+                                nic = loggedInNic,
+                                onBackClick = { currentScreen = Screen.Dashboard },
+                                onBookingClick = { bookingId -> currentScreen = Screen.BookingDetails(bookingId) },
+                            )
+                        }
+                        is Screen.BookingDetails -> {
+                            val screen = currentScreen as Screen.BookingDetails
+                            BookingDetailsScreen(
+                                bookingId = screen.bookingId,
+                                nic = loggedInNic,
+                                onBackClick = { currentScreen = Screen.Bookings },
                             )
                         }
                         is Screen.Profile -> {
@@ -107,22 +213,20 @@ class MainActivity : ComponentActivity() {
                                     startActivity(Intent(this@MainActivity, StationsMapActivity::class.java))
                                 },
                                 onLogout = {
+                                    scope.launch {
+                                        db.sessionDao().clearSession()
+                                        smartSolarApp.sessionManager.clearSession()
+                                    }
                                     loggedInFullName = ""
                                     loggedInNic = ""
-                                    lifecycleScope.launch {
-                                        (application as SmartSolarApp).sessionManager.clearSession()
-                                        startActivity(
-                                            Intent(
-                                                this@MainActivity,
-                                                com.smartsolar.microgrid.ui.login.LoginActivity::class.java,
-                                            ).apply {
-                                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                                                    Intent.FLAG_ACTIVITY_CLEAR_TASK
-                                            },
-                                        )
-                                        finish()
-                                    }
+                                    startActivity(
+                                        Intent(this@MainActivity, LoginActivity::class.java).apply {
+                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                        },
+                                    )
+                                    finish()
                                 },
+                                onBackToHome = { currentScreen = Screen.Dashboard },
                             )
                         }
                         is Screen.MyProfile -> {
@@ -130,6 +234,15 @@ class MainActivity : ComponentActivity() {
                                 fullName = loggedInFullName,
                                 nic = loggedInNic,
                                 onBack = { currentScreen = Screen.Profile },
+                                onAccountDeactivated = {
+                                    scope.launch {
+                                        db.sessionDao().clearSession()
+                                        smartSolarApp.sessionManager.clearSession()
+                                    }
+                                    loggedInFullName = ""
+                                    loggedInNic = ""
+                                    currentScreen = Screen.Login
+                                },
                             )
                         }
                         is Screen.ChangePassword -> {

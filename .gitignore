@@ -28,3 +28,6 @@ android/app/release/
 docs/
 api/MicrogridApi/appsettings.json
 api/MicrogridApi/appsettings.Development.json
+
+# ===== Test Output =====
+TestResults/

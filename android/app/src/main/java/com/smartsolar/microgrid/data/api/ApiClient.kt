@@ -42,7 +42,7 @@ object ApiClient {
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
             .writeTimeout(20, TimeUnit.SECONDS)
-            .addInterceptor(HostFallbackInterceptor())
+            .addInterceptor(SelectedHostInterceptor())
 
         if (sessionManager != null) {
             builder.addInterceptor(AuthInterceptor(sessionManager))

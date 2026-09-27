@@ -1,20 +1,13 @@
-// =============================================================================
-// File: EnergyReservation.cs
-// Description: Provisional reservation document compatible with Viman's proposed
-//              energyReservation collection. Suwani owns QR/transfer fields only.
-// Author: Suwani (Component 4)
-// =============================================================================
-
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace MicrogridApi.Models;
 
 /// <summary>
-/// Canonical statuses (lowercase to match existing users/nodes): pending, approved,
-/// cancelled, completed.
-/// StationId stores the application NodeId (e.g. NODE-XXXXXXXX), not Mongo ObjectId.
-/// TransactionReference is a high-entropy opaque QR credential issued by the API.
+/// Shared reservation document (Viman CRUD + Suwani QR/transfer).
+/// Statuses: Pending | Approved | Cancelled | Completed (PascalCase, Viman contract).
+/// StationId stores MicrogridNode.NodeId (not Mongo ObjectId).
+/// TransactionReference is an opaque QR credential issued by Suwani's API when approved.
 /// </summary>
 public class EnergyReservation
 {
@@ -22,22 +15,21 @@ public class EnergyReservation
     [BsonRepresentation(BsonType.ObjectId)]
     public string? Id { get; set; }
 
-    public string ReservationId { get; set; } = Guid.NewGuid().ToString("N");
+    public string ReservationId { get; set; } = string.Empty;
 
-    public string ProsumerNic { get; set; } = string.Empty;
+    public string ProsumerNic { get; set; } = string.Empty; // references Prosumer.Nic
 
-    /// <summary>Application-level station identifier (MicrogridNode.NodeId).</summary>
-    public string StationId { get; set; } = string.Empty;
+    public string StationId { get; set; } = string.Empty; // references MicrogridNode.NodeId
 
-    public string SlotId { get; set; } = string.Empty;
+    public string SlotId { get; set; } = string.Empty; // references EnergyBookingSlot.SlotId
 
-    /// <summary>pending | approved | cancelled | completed</summary>
-    public string Status { get; set; } = "pending";
+    /// <summary>Pending | Approved | Cancelled | Completed</summary>
+    public string Status { get; set; } = "Pending";
 
     /// <summary>
-    /// Opaque server-issued QR reference. Never derived from sequential counters alone.
+    /// Opaque server-issued QR reference. Empty until QR is issued for an Approved reservation.
     /// </summary>
-    public string? TransactionReference { get; set; }
+    public string TransactionReference { get; set; } = string.Empty;
 
     public DateTime? TransactionReferenceIssuedAt { get; set; }
 

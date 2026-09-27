@@ -124,8 +124,9 @@ public class MongoReservationAccess : IReservationAccess
 
 public static class ReservationStatuses
 {
-    public const string Pending = "pending";
-    public const string Approved = "approved";
-    public const string Cancelled = "cancelled";
-    public const string Completed = "completed";
+    // PascalCase matches Viman ReservationsController / Android booking UI contracts.
+    public const string Pending = "Pending";
+    public const string Approved = "Approved";
+    public const string Cancelled = "Cancelled";
+    public const string Completed = "Completed";
 }

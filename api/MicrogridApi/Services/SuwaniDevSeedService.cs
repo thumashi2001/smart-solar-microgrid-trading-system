@@ -211,13 +211,7 @@ public class SuwaniDevSeedService
             EndTime = "12:00",
             Capacity = 4,
             Availability = 3,
-            Status = "active",
-            CreatedAt = existing?.CreatedAt ?? now,
-            UpdatedAt = now
-        }, cancellationToken);
-    }
-
-    private async Task UpsertReservationAsync(
+            Status = "Available",
         DateTime now,
         List<string> created,
         List<string> updated,
