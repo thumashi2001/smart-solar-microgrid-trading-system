@@ -3,13 +3,14 @@ package com.smartsolar.microgrid.ui.prosumer
 import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
+import androidx.lifecycle.lifecycleScope
+import com.smartsolar.microgrid.R
 import com.smartsolar.microgrid.databinding.ActivityProsumerQrEntryBinding
 import com.smartsolar.microgrid.ui.login.LoginActivity
 import com.smartsolar.microgrid.ui.qr.QrDisplayActivity
 import com.smartsolar.microgrid.util.smartSolarApp
 import kotlinx.coroutines.launch
-import androidx.lifecycle.lifecycleScope
-import com.smartsolar.microgrid.R
 
 /**
  * Minimal prosumer entry to exercise QR display until Viman's booking detail screen
@@ -21,6 +22,7 @@ class ProsumerQrEntryActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, true)
         binding = ActivityProsumerQrEntryBinding.inflate(layoutInflater)
         setContentView(binding.root)
 

@@ -30,18 +30,16 @@ public class ReservationQrController : ControllerBase
     public async Task<IActionResult> GetQr(string reservationId, CancellationToken cancellationToken)
     {
         var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+        // TokenService puts Prosumer NIC (and staff UserId) in sub / NameIdentifier.
+        // The custom "identifier" claim may be email for prosumers and must NOT be used
+        // for reservation ownership checks (ownership is keyed by ProsumerNic).
         var subject = User.FindFirstValue(ClaimTypes.NameIdentifier)
             ?? User.FindFirstValue("sub")
             ?? string.Empty;
 
-        // Prosumers may be identified by NIC stored in the "identifier" claim.
-        var identifier = User.FindFirstValue("identifier") ?? subject;
-
-        var callerKey = role == "Prosumer" ? identifier : subject;
-
         var result = await _transfers.IssueQrAsync(
             reservationId,
-            callerKey,
+            subject,
             role,
             cancellationToken);
 

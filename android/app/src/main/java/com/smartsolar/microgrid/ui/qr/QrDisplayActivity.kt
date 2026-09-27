@@ -2,6 +2,7 @@ package com.smartsolar.microgrid.ui.qr
 
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import com.smartsolar.microgrid.R
@@ -30,6 +31,7 @@ class QrDisplayActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, true)
         binding = ActivityQrDisplayBinding.inflate(layoutInflater)
         setContentView(binding.root)
 

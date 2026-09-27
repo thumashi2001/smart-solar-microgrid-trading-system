@@ -1,64 +1,62 @@
 using System;
-using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
-using MicrogridApi.Data;
 using MicrogridApi.Dtos;
 using MicrogridApi.Models;
-using MicrogridApi.Settings;
 using MongoDB.Driver;
 using Xunit;
 
 namespace MicrogridApi.Tests.Integration
 {
     // API/Integration tests using WebApplicationFactory
+    // Default Mongo target (no env): mongodb://localhost:27017 + unique *test* DB name.
+    // Atlas override: set MICROGRID_TEST_MONGODB_URI (required for Atlas) and optional
+    // MICROGRID_TEST_MONGODB_DATABASE. Shared microgrid_db is always rejected.
     [Trait("Category", "Integration")]
     public class SlotsApiTests : IClassFixture<WebApplicationFactory<Program>>, IAsyncLifetime
     {
         private readonly HttpClient _client;
-        private readonly WebApplicationFactory<Program> _factory;
+        private readonly string _connectionString;
+        private readonly string _testDbName;
         private IMongoDatabase? _database;
-        private const string TestDbName = "microgrid_test_db";
 
         public SlotsApiTests(WebApplicationFactory<Program> factory)
         {
-            _factory = factory.WithWebHostBuilder(builder =>
+            _connectionString = MongoIntegrationTestConfig.ResolveConnectionString();
+            _testDbName = MongoIntegrationTestConfig.CreateUniqueTestDatabaseName();
+
+            var configured = factory.WithWebHostBuilder(builder =>
             {
+                builder.UseSetting("Environment", "Development");
                 builder.ConfigureTestServices(services =>
                 {
-                    // Override the MongoDB settings to point to a local test database
-                    services.Configure<MongoDbSettings>(options =>
-                    {
-                        options.ConnectionString = "mongodb://localhost:27017";
-                        options.DatabaseName = TestDbName;
-                    });
+                    MongoIntegrationTestConfig.ConfigureIsolatedMongo(
+                        services,
+                        _connectionString,
+                        _testDbName);
                 });
             });
 
-            _client = _factory.CreateClient();
+            _client = configured.CreateClient();
         }
 
         public async Task InitializeAsync()
         {
-            // Set up test database connection before tests run
-            var client = new MongoClient("mongodb://localhost:27017");
-            _database = client.GetDatabase(TestDbName);
+            _database = MongoIntegrationTestConfig.Connect(_connectionString, _testDbName);
 
-            // Clear collections for clean state
+            // Clear collections for clean state (test DB only).
             await _database.DropCollectionAsync("energyBookingSlots");
             await _database.DropCollectionAsync("energyReservation");
         }
 
-        public Task DisposeAsync()
+        public async Task DisposeAsync()
         {
-            // Cleanup test data
-            return Task.CompletedTask;
+            // Drop only this run's unique test database.
+            await MongoIntegrationTestConfig.DropTestDatabaseAsync(_connectionString, _testDbName);
         }
 
         private async Task<EnergyBookingSlot> SeedSlotAsync(string status = "Available", int capacity = 5)
@@ -75,7 +73,7 @@ namespace MicrogridApi.Tests.Integration
                 Status = status
             };
 
-            var collection = _database.GetCollection<EnergyBookingSlot>("energyBookingSlots");
+            var collection = _database!.GetCollection<EnergyBookingSlot>("energyBookingSlots");
             await collection.InsertOneAsync(slot);
             return slot;
         }
@@ -89,7 +87,7 @@ namespace MicrogridApi.Tests.Integration
                 StationId = "ST-TEST",
                 Status = status
             };
-            var collection = _database.GetCollection<EnergyReservation>("energyReservation");
+            var collection = _database!.GetCollection<EnergyReservation>("energyReservation");
             await collection.InsertOneAsync(res);
         }
 
@@ -111,7 +109,7 @@ namespace MicrogridApi.Tests.Integration
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
             // Verify Database
-            var collection = _database.GetCollection<EnergyBookingSlot>("energyBookingSlots");
+            var collection = _database!.GetCollection<EnergyBookingSlot>("energyBookingSlots");
             var updatedSlot = await collection.Find(s => s.Id == slot.Id).FirstOrDefaultAsync();
 
             Assert.NotNull(updatedSlot);
@@ -134,7 +132,7 @@ namespace MicrogridApi.Tests.Integration
 
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
-            var collection = _database.GetCollection<EnergyBookingSlot>("energyBookingSlots");
+            var collection = _database!.GetCollection<EnergyBookingSlot>("energyBookingSlots");
             var unchangedSlot = await collection.Find(s => s.Id == slot.Id).FirstOrDefaultAsync();
             Assert.Equal(slot.Date, unchangedSlot.Date); // Original date remains unchanged
         }
@@ -166,8 +164,8 @@ namespace MicrogridApi.Tests.Integration
             var response = await _client.PutAsJsonAsync($"/api/slots/{slot.Id}", req);
 
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            
-            var collection = _database.GetCollection<EnergyBookingSlot>("energyBookingSlots");
+
+            var collection = _database!.GetCollection<EnergyBookingSlot>("energyBookingSlots");
             var updatedSlot = await collection.Find(s => s.Id == slot.Id).FirstOrDefaultAsync();
             Assert.Equal(newDate, updatedSlot.Date);
         }

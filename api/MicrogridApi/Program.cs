@@ -20,6 +20,7 @@ builder.Services.AddScoped<IReservationAccess, MongoReservationAccess>();
 builder.Services.AddScoped<IStationLookup, MongoStationLookup>();
 builder.Services.AddScoped<ISuwaniSeedStore, MongoSuwaniSeedStore>();
 builder.Services.AddScoped<SuwaniDevSeedService>();
+builder.Services.AddScoped<SuwaniQaV1SeedService>();
 builder.Services.AddScoped<TransferService>();
 
 var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()

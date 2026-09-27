@@ -81,13 +81,17 @@ public class MongoReservationAccess : IReservationAccess
             return null;
         }
 
-        if (!string.IsNullOrWhiteSpace(existing.TransactionReference)
-            && existing.Status == ReservationStatuses.Approved)
+        var isApproved = string.Equals(
+            existing.Status,
+            ReservationStatuses.Approved,
+            StringComparison.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(existing.TransactionReference) && isApproved)
         {
             return existing;
         }
 
-        if (existing.Status != ReservationStatuses.Approved)
+        if (!isApproved)
         {
             return existing;
         }
@@ -95,9 +99,12 @@ public class MongoReservationAccess : IReservationAccess
         var reference = CreateOpaqueReference();
         var now = DateTime.UtcNow;
 
+        // Match Approved case-insensitively so pre-merge lowercase seed docs still work.
         var filter = Builders<EnergyReservation>.Filter.And(
             Builders<EnergyReservation>.Filter.Eq(r => r.ReservationId, reservationId),
-            Builders<EnergyReservation>.Filter.Eq(r => r.Status, ReservationStatuses.Approved));
+            Builders<EnergyReservation>.Filter.Regex(
+                r => r.Status,
+                new MongoDB.Bson.BsonRegularExpression($"^{ReservationStatuses.Approved}$", "i")));
 
         var update = Builders<EnergyReservation>.Update
             .Set(r => r.TransactionReference, reference)

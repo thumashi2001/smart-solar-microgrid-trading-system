@@ -182,7 +182,7 @@ public class TransferService
             return QrIssueResult.Fail(403, "Not permitted to retrieve this QR code.");
         }
 
-        if (reservation.Status != ReservationStatuses.Approved)
+        if (!string.Equals(reservation.Status, ReservationStatuses.Approved, StringComparison.OrdinalIgnoreCase))
         {
             return QrIssueResult.Fail(
                 409,
@@ -219,18 +219,25 @@ public class TransferService
             return (false, "Reservation has no issued transaction reference.");
         }
 
-        switch (reservation.Status)
+        if (string.Equals(reservation.Status, ReservationStatuses.Approved, StringComparison.OrdinalIgnoreCase))
         {
-            case ReservationStatuses.Approved:
-                break;
-            case ReservationStatuses.Pending:
-                return (false, "Reservation is still pending approval.");
-            case ReservationStatuses.Cancelled:
-                return (false, "Reservation has been cancelled.");
-            case ReservationStatuses.Completed:
-                return (false, "Reservation transfer is already completed.");
-            default:
-                return (false, $"Reservation status '{reservation.Status}' is not eligible.");
+            // eligible
+        }
+        else if (string.Equals(reservation.Status, ReservationStatuses.Pending, StringComparison.OrdinalIgnoreCase))
+        {
+            return (false, "Reservation is still pending approval.");
+        }
+        else if (string.Equals(reservation.Status, ReservationStatuses.Cancelled, StringComparison.OrdinalIgnoreCase))
+        {
+            return (false, "Reservation has been cancelled.");
+        }
+        else if (string.Equals(reservation.Status, ReservationStatuses.Completed, StringComparison.OrdinalIgnoreCase))
+        {
+            return (false, "Reservation transfer is already completed.");
+        }
+        else
+        {
+            return (false, $"Reservation status '{reservation.Status}' is not eligible.");
         }
 
         var station = await FindStationAsync(reservation.StationId, cancellationToken);
