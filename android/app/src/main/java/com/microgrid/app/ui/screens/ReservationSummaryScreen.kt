@@ -1,12 +1,13 @@
 package com.microgrid.app.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.BoltSharp
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.LocationOn
@@ -61,12 +62,12 @@ fun ReservationSummaryScreen(
     var error by remember { mutableStateOf("") }
     var createdReservation by remember { mutableStateOf<Reservation?>(null) }
 
-    // ── Success state ────────────────────────────────────────────────
     if (createdReservation != null) {
         val res = createdReservation!!
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(PageBg)
                 .verticalScroll(rememberScrollState())
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -184,12 +185,12 @@ fun ReservationSummaryScreen(
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.BoltSharp, null, tint = AccentGreen)
+                        Icon(Icons.Filled.FlashOn, null, tint = AccentGreen)
                         Spacer(Modifier.width(8.dp))
                         Text("Slot Details", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = DarkGreen)
                     }
                     Spacer(Modifier.height(10.dp))
-                    DetailRow(Icons.Filled.BoltSharp, "Slot ID", slot.slotId)
+                    DetailRow(Icons.Filled.FlashOn, "Slot ID", slot.slotId)
                     DetailRow(Icons.Filled.CalendarToday, "Date", slot.date)
                     DetailRow(Icons.Filled.Schedule, "Time", "${slot.startTime} – ${slot.endTime}")
                     Spacer(Modifier.height(8.dp))

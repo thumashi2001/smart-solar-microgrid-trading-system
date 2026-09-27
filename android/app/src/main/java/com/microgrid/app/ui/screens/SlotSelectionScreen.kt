@@ -7,7 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.BoltSharp
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.LocationOn
@@ -204,7 +204,10 @@ fun SlotSelectionScreenContent(
                             Text("No slots available", fontWeight = FontWeight.SemiBold, color = DarkGreen)
                             Text("No available slots for this station and date.", fontSize = 13.sp, color = Color.Gray)
                             Spacer(Modifier.height(8.dp))
-                            OutlinedButton(onClick = onBack) { Text("Choose Different Date") }
+                            OutlinedButton(
+                                onClick = onBack,
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = DarkGreen)
+                            ) { Text("Choose Different Date") }
                         }
                     }
                 }
@@ -295,7 +298,7 @@ private fun SlotCard(slot: Slot, onClick: () -> Unit) {
                 shape = RoundedCornerShape(8.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = AccentGreen)
             ) {
-                Icon(Icons.Filled.BoltSharp, null, modifier = Modifier.size(16.dp))
+                Icon(Icons.Filled.FlashOn, null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("Book This Slot", fontWeight = FontWeight.Bold)
             }

@@ -8,7 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.BoltSharp
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Schedule
@@ -147,8 +147,11 @@ fun MyBookingsScreen(
                 ) { Text("Yes, Cancel", color = Color(0xFFC5221F), fontWeight = FontWeight.Bold) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmCancelTarget = null }) { Text("Keep Booking") }
-            }
+                TextButton(onClick = { confirmCancelTarget = null }) { Text("Keep Booking", color = DarkGreen) }
+            },
+            containerColor = Color.White,
+            titleContentColor = Color.Black,
+            textContentColor = Color.Black
         )
     }
 
@@ -338,7 +341,7 @@ private fun BookingCard(
             // Date / Time (from reservation fields if available, else empty)
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.BoltSharp, null, tint = AccentGreen, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Filled.FlashOn, null, tint = AccentGreen, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("NIC: ${reservation.prosumerNic}", fontSize = 12.sp, color = Color.Gray)
                 }
