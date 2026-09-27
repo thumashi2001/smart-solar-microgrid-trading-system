@@ -3,6 +3,11 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace MicrogridApi.Models;
 
+/// <summary>
+/// Shared booking-slot document (Viman slot CRUD + Suwani seed compatibility).
+/// Statuses: Available | Unavailable (Viman contract).
+/// StationId stores MicrogridNode.NodeId (not Mongo ObjectId).
+/// </summary>
 public class EnergyBookingSlot
 {
     [BsonId]
@@ -23,7 +28,8 @@ public class EnergyBookingSlot
 
     public int Availability { get; set; } // remaining reservation spaces (0 <= Availability <= Capacity)
 
-    public string Status { get; set; } = "Available"; // "Available" or "Unavailable"
+    /// <summary>Available | Unavailable</summary>
+    public string Status { get; set; } = "Available";
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

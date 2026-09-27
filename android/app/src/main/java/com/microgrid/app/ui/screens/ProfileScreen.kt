@@ -35,12 +35,15 @@ fun ProfileScreen(
     onNotifications: () -> Unit,
     onHelpSupport: () -> Unit,
     onAbout: () -> Unit,
-    // ── Component 2 entry points ────────────────────────────────────────
+    // Component 2 entry points
     onMyBookings: () -> Unit,
     onBookSlot: () -> Unit,
-    // ── Auth ─────────────────────────────────────────────────────────────
+    // Component 4 entry points (Suwani)
+    onReservationQr: () -> Unit = {},
+    onStationsMap: () -> Unit = {},
+    // Auth
     onLogout: () -> Unit,
-    onBackToHome: () -> Unit
+    onBackToHome: () -> Unit,
 ) {
     var photoUri by remember { mutableStateOf<Uri?>(null) }
     val launcher = rememberLauncherForActivityResult(
@@ -75,105 +78,126 @@ fun ProfileScreen(
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
-        // ── Avatar ─────────────────────────────────────────────────────
-        Box(
-            modifier = Modifier
-                .size(80.dp)
-                .clip(CircleShape)
-                .background(Color(0xFFD8D4CB))
-                .clickable { launcher.launch("image/*") },
-            contentAlignment = Alignment.Center
-        ) {
-            if (photoUri != null) {
-                Image(
-                    painter = rememberAsyncImagePainter(photoUri),
-                    contentDescription = "Profile photo",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Icon(Icons.Filled.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(40.dp))
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFD8D4CB))
+                    .clickable { launcher.launch("image/*") },
+                contentAlignment = Alignment.Center
+            ) {
+                if (photoUri != null) {
+                    Image(
+                        painter = rememberAsyncImagePainter(photoUri),
+                        contentDescription = "Profile photo",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(Icons.Filled.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(40.dp))
+                }
             }
-        }
-        Spacer(modifier = Modifier.height(6.dp))
-        Text("Tap to change photo", fontSize = 11.sp, color = Color.Gray)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(fullName, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkGreen)
-        Text(nic, fontSize = 13.sp, color = Color.Gray)
+            Spacer(modifier = Modifier.height(6.dp))
+            Text("Tap to change photo", fontSize = 11.sp, color = Color.Gray)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(fullName, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkGreen)
+            Text(nic, fontSize = 13.sp, color = Color.Gray)
 
-        Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-        // ── Energy Booking section ─────────────────────────────────────
-        Text(
-            "⚡ Energy Booking",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            color = AccentGreen,
-            modifier = Modifier
-                .align(Alignment.Start)
-                .padding(bottom = 6.dp)
-        )
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column {
-                ProfileMenuItem(Icons.Filled.FlashOn, "Book Energy Slot", onBookSlot)
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp))
-                ProfileMenuItem(Icons.Filled.List, "My Bookings", onMyBookings)
+            Text(
+                "Energy Booking",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = AccentGreen,
+                modifier = Modifier
+                    .align(Alignment.Start)
+                    .padding(bottom = 6.dp)
+            )
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column {
+                    ProfileMenuItem(Icons.Filled.FlashOn, "Book Energy Slot", onBookSlot)
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp))
+                    ProfileMenuItem(Icons.Filled.List, "My Bookings", onMyBookings)
+                }
             }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-        // ── Account section ────────────────────────────────────────────
-        Text(
-            "👤 Account",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color.Gray,
-            modifier = Modifier
-                .align(Alignment.Start)
-                .padding(bottom = 6.dp)
-        )
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column {
-                ProfileMenuItem(Icons.Filled.Person, "My Profile", onMyProfile)
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp))
-                ProfileMenuItem(Icons.Filled.Lock, "Change Password", onChangePassword)
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp))
-                ProfileMenuItem(Icons.Filled.Notifications, "Notifications", onNotifications)
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp))
-                ProfileMenuItem(Icons.Filled.Info, "Help & Support", onHelpSupport)
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp))
-                ProfileMenuItem(Icons.Filled.Info, "About", onAbout)
+            Text(
+                "Transfer & Maps",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = AccentGreen,
+                modifier = Modifier
+                    .align(Alignment.Start)
+                    .padding(bottom = 6.dp)
+            )
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column {
+                    ProfileMenuItem(Icons.Filled.QrCode, "Reservation QR", onReservationQr)
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp))
+                    ProfileMenuItem(Icons.Filled.Place, "Stations map", onStationsMap)
+                }
             }
-        }
 
-        Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-        OutlinedButton(
-            onClick = onLogout,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp),
-            shape = RoundedCornerShape(10.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB14A3C))
-        ) {
-            Icon(Icons.Filled.Logout, contentDescription = null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Logout")
+            Text(
+                "Account",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Gray,
+                modifier = Modifier
+                    .align(Alignment.Start)
+                    .padding(bottom = 6.dp)
+            )
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column {
+                    ProfileMenuItem(Icons.Filled.Person, "My Profile", onMyProfile)
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp))
+                    ProfileMenuItem(Icons.Filled.Lock, "Change Password", onChangePassword)
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp))
+                    ProfileMenuItem(Icons.Filled.Notifications, "Notifications", onNotifications)
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp))
+                    ProfileMenuItem(Icons.Filled.Info, "Help & Support", onHelpSupport)
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp))
+                    ProfileMenuItem(Icons.Filled.Info, "About", onAbout)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            OutlinedButton(
+                onClick = onLogout,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB14A3C))
+            ) {
+                Icon(Icons.Filled.Logout, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Logout")
+            }
+            Spacer(modifier = Modifier.height(16.dp))
         }
-        Spacer(modifier = Modifier.height(16.dp))
     }
-}
 }
 
 @Composable

@@ -6,11 +6,9 @@ using System.Net.Http.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
-using Microsoft.Extensions.DependencyInjection;
 using MicrogridApi.Data;
 using MicrogridApi.Dtos;
 using MicrogridApi.Models;
-using MicrogridApi.Settings;
 using MongoDB.Driver;
 using Xunit;
 
@@ -22,21 +20,25 @@ namespace MicrogridApi.Tests.Integration
     {
         private readonly HttpClient _client;
         private readonly WebApplicationFactory<Program> _factory;
+        private readonly string _connectionString;
+        private readonly string _testDbName;
         private IMongoDatabase? _database;
-        private readonly string _testDbName = $"microgrid_test_{Guid.NewGuid():N}";
 
         public ReservationsApiTests(WebApplicationFactory<Program> factory)
         {
+            _connectionString = MongoIntegrationTestConfig.ResolveConnectionString();
+            _testDbName = MongoIntegrationTestConfig.CreateUniqueTestDatabaseName();
+
             _factory = factory.WithWebHostBuilder(builder =>
             {
+                builder.UseSetting("Environment", "Development");
                 builder.ConfigureTestServices(services =>
                 {
-                    // Override the MongoDB settings to point to an isolated local test database
-                    services.Configure<MongoDbSettings>(options =>
-                    {
-                        options.ConnectionString = "mongodb://localhost:27017";
-                        options.DatabaseName = _testDbName;
-                    });
+                    // Isolated test DB via shared helper (localhost default; Atlas via env).
+                    MongoIntegrationTestConfig.ConfigureIsolatedMongo(
+                        services,
+                        _connectionString,
+                        _testDbName);
                 });
             });
 
@@ -47,14 +49,7 @@ namespace MicrogridApi.Tests.Integration
         {
             try
             {
-                var settings = MongoClientSettings.FromConnectionString("mongodb://localhost:27017");
-                settings.ServerSelectionTimeout = TimeSpan.FromSeconds(2);
-                var client = new MongoClient(settings);
-
-                // Explicitly verify MongoDB connectivity before running integration tests
-                await client.GetDatabase("admin").RunCommandAsync<MongoDB.Bson.BsonDocument>(new MongoDB.Bson.BsonDocument("ping", 1));
-
-                _database = client.GetDatabase(_testDbName);
+                _database = MongoIntegrationTestConfig.Connect(_connectionString, _testDbName);
 
                 // Clear collections for clean isolated test state
                 await _database.DropCollectionAsync("energyBookingSlots");
@@ -66,26 +61,15 @@ namespace MicrogridApi.Tests.Integration
             catch (Exception ex)
             {
                 throw new InvalidOperationException(
-                    "Integration test prerequisite missing: Local MongoDB instance is not reachable at mongodb://localhost:27017. " +
-                    "Integration tests require an active MongoDB server. Ensure MongoDB is running before executing integration tests.", ex);
+                    "Integration test prerequisite missing: MongoDB is not reachable for the configured test URI. " +
+                    "Default is mongodb://localhost:27017; Atlas requires MICROGRID_TEST_MONGODB_URI. " +
+                    "Ensure MongoDB is running before executing integration tests.", ex);
             }
         }
 
         public async Task DisposeAsync()
         {
-            // Drop isolated test database after test run
-            if (_database != null)
-            {
-                try
-                {
-                    var client = new MongoClient("mongodb://localhost:27017");
-                    await client.DropDatabaseAsync(_testDbName);
-                }
-                catch
-                {
-                    // Ignore dispose cleanup errors
-                }
-            }
+            await MongoIntegrationTestConfig.DropTestDatabaseAsync(_connectionString, _testDbName);
         }
 
         private async Task SeedProsumerAsync(string nic = "123456789V", string status = "active")

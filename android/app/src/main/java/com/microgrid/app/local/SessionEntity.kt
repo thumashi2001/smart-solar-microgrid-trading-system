@@ -9,5 +9,7 @@ data class SessionEntity(
     val nic: String,
     val fullName: String,
     val token: String,
+    /** Auth role from login (Prosumer / GridOperator). Empty for legacy rows. */
+    val role: String = "",
     val photoUri: String?
 )

@@ -3,6 +3,12 @@
     "ConnectionString": "YOUR_CONNECTION_STRING_HERE",
     "DatabaseName": "microgrid_db"
   },
+  "JwtSettings": {
+    "Issuer": "MicrogridApi",
+    "Audience": "MicrogridClients",
+    "SecretKey": "REPLACE_WITH_A_LONG_RANDOM_SECRET_AT_LEAST_32_CHARS",
+    "ExpiryMinutes": 480
+  },
   "Logging": {
     "LogLevel": {
       "Default": "Information",

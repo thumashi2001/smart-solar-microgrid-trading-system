@@ -661,7 +661,12 @@ namespace MicrogridApi.Tests.Unit
         [Fact]
         public async Task Create_StrictHHmm_Valid_ReturnsCreatedAtAction()
         {
+            MongoDbIndexConfigurator.ResetVerificationStateForTesting(true);
             SetupStation(new MicrogridNode { NodeId = "ST-1", Status = "active" });
+            _mockSlotsCollection
+                .Setup(c => c.InsertOneAsync(It.IsAny<EnergyBookingSlot>(), It.IsAny<InsertOneOptions>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+
             var req = new CreateSlotRequest
             {
                 StationId = "ST-1",
@@ -901,24 +906,29 @@ namespace MicrogridApi.Tests.Unit
             SetupStation(new MicrogridNode { NodeId = "ST-1", Status = "active" });
             MongoDbIndexConfigurator.ResetVerificationStateForTesting(false);
 
-            // Mock index configuration failure
-            _mockSlotsCollection.Setup(c => c.Indexes).Throws(new InvalidOperationException("DB offline"));
-
-            var req = new CreateSlotRequest
+            try
             {
-                StationId = "ST-1",
-                Date = new DateTime(2026, 4, 1),
-                StartTime = "10:00",
-                EndTime = "11:00",
-                Capacity = 5
-            };
+                // Mock index configuration failure
+                _mockSlotsCollection.Setup(c => c.Indexes).Throws(new InvalidOperationException("DB offline"));
 
-            var result = await _controller.Create(req);
-            var statusResult = Assert.IsType<ObjectResult>(result);
-            Assert.Equal(503, statusResult.StatusCode);
+                var req = new CreateSlotRequest
+                {
+                    StationId = "ST-1",
+                    Date = new DateTime(2026, 4, 1),
+                    StartTime = "10:00",
+                    EndTime = "11:00",
+                    Capacity = 5
+                };
 
-            // Restore state for other tests
-            MongoDbIndexConfigurator.ResetVerificationStateForTesting(true);
+                var result = await _controller.Create(req);
+                var statusResult = Assert.IsType<ObjectResult>(result);
+                Assert.Equal(503, statusResult.StatusCode);
+            }
+            finally
+            {
+                // Restore static state for other tests even if assertions fail.
+                MongoDbIndexConfigurator.ResetVerificationStateForTesting(true);
+            }
         }
 
         private static MongoWriteException CreateDuplicateKeyException()

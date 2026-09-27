@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <!-- Current PC Wi-Fi / hotspot IP (physical device) -->
+        <domain includeSubdomains="true">192.168.43.155</domain>
+        <!-- Previous LAN IP kept for local rebuilds -->
+        <domain includeSubdomains="true">192.168.8.101</domain>
+        <!-- Teammate/dev LAN IP preserved from origin/dev RetrofitClient -->
+        <domain includeSubdomains="true">172.20.10.2</domain>
+    </domain-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>
