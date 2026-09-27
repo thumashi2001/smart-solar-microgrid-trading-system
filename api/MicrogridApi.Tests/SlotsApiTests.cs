@@ -24,7 +24,7 @@ namespace MicrogridApi.Tests.Integration
         private readonly HttpClient _client;
         private readonly WebApplicationFactory<Program> _factory;
         private IMongoDatabase? _database;
-        private const string TestDbName = "microgrid_test_db";
+        private readonly string _testDbName = $"microgrid_test_{Guid.NewGuid():N}";
 
         public SlotsApiTests(WebApplicationFactory<Program> factory)
         {
@@ -32,11 +32,11 @@ namespace MicrogridApi.Tests.Integration
             {
                 builder.ConfigureTestServices(services =>
                 {
-                    // Override the MongoDB settings to point to a local test database
+                    // Override the MongoDB settings to point to an isolated local test database
                     services.Configure<MongoDbSettings>(options =>
                     {
                         options.ConnectionString = "mongodb://localhost:27017";
-                        options.DatabaseName = TestDbName;
+                        options.DatabaseName = _testDbName;
                     });
                 });
             });
@@ -46,19 +46,47 @@ namespace MicrogridApi.Tests.Integration
 
         public async Task InitializeAsync()
         {
-            // Set up test database connection before tests run
-            var client = new MongoClient("mongodb://localhost:27017");
-            _database = client.GetDatabase(TestDbName);
+            try
+            {
+                var settings = MongoClientSettings.FromConnectionString("mongodb://localhost:27017");
+                settings.ServerSelectionTimeout = TimeSpan.FromSeconds(2);
+                var client = new MongoClient(settings);
 
-            // Clear collections for clean state
-            await _database.DropCollectionAsync("energyBookingSlots");
-            await _database.DropCollectionAsync("energyReservation");
+                // Explicitly verify MongoDB connectivity before running integration tests
+                await client.GetDatabase("admin").RunCommandAsync<MongoDB.Bson.BsonDocument>(new MongoDB.Bson.BsonDocument("ping", 1));
+
+                _database = client.GetDatabase(_testDbName);
+
+                // Clear collections for clean isolated test state
+                await _database.DropCollectionAsync("energyBookingSlots");
+                await _database.DropCollectionAsync("energyReservation");
+
+                // Configure database-level unique indexes
+                await MongoDbIndexConfigurator.ConfigureIndexesAsync(_database);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    "Integration test prerequisite missing: Local MongoDB instance is not reachable at mongodb://localhost:27017. " +
+                    "Integration tests require an active MongoDB server. Ensure MongoDB is running before executing integration tests.", ex);
+            }
         }
 
-        public Task DisposeAsync()
+        public async Task DisposeAsync()
         {
-            // Cleanup test data
-            return Task.CompletedTask;
+            // Drop isolated test database after test run
+            if (_database != null)
+            {
+                try
+                {
+                    var client = new MongoClient("mongodb://localhost:27017");
+                    await client.DropDatabaseAsync(_testDbName);
+                }
+                catch
+                {
+                    // Ignore dispose cleanup errors
+                }
+            }
         }
 
         private async Task<EnergyBookingSlot> SeedSlotAsync(string status = "Available", int capacity = 5)
@@ -75,7 +103,7 @@ namespace MicrogridApi.Tests.Integration
                 Status = status
             };
 
-            var collection = _database.GetCollection<EnergyBookingSlot>("energyBookingSlots");
+            var collection = _database!.GetCollection<EnergyBookingSlot>("energyBookingSlots");
             await collection.InsertOneAsync(slot);
             return slot;
         }
@@ -89,7 +117,7 @@ namespace MicrogridApi.Tests.Integration
                 StationId = "ST-TEST",
                 Status = status
             };
-            var collection = _database.GetCollection<EnergyReservation>("energyReservation");
+            var collection = _database!.GetCollection<EnergyReservation>("energyReservation");
             await collection.InsertOneAsync(res);
         }
 
@@ -111,7 +139,7 @@ namespace MicrogridApi.Tests.Integration
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
             // Verify Database
-            var collection = _database.GetCollection<EnergyBookingSlot>("energyBookingSlots");
+            var collection = _database!.GetCollection<EnergyBookingSlot>("energyBookingSlots");
             var updatedSlot = await collection.Find(s => s.Id == slot.Id).FirstOrDefaultAsync();
 
             Assert.NotNull(updatedSlot);
@@ -134,7 +162,7 @@ namespace MicrogridApi.Tests.Integration
 
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
-            var collection = _database.GetCollection<EnergyBookingSlot>("energyBookingSlots");
+            var collection = _database!.GetCollection<EnergyBookingSlot>("energyBookingSlots");
             var unchangedSlot = await collection.Find(s => s.Id == slot.Id).FirstOrDefaultAsync();
             Assert.Equal(slot.Date, unchangedSlot.Date); // Original date remains unchanged
         }
@@ -167,7 +195,7 @@ namespace MicrogridApi.Tests.Integration
 
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             
-            var collection = _database.GetCollection<EnergyBookingSlot>("energyBookingSlots");
+            var collection = _database!.GetCollection<EnergyBookingSlot>("energyBookingSlots");
             var updatedSlot = await collection.Find(s => s.Id == slot.Id).FirstOrDefaultAsync();
             Assert.Equal(newDate, updatedSlot.Date);
         }
@@ -192,6 +220,70 @@ namespace MicrogridApi.Tests.Integration
             var response = await _client.PutAsJsonAsync($"/api/slots/64c8d5f3b1abcdef12345678", req);
 
             Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        }
+
+        // DB-UX-01: Unique index prevents duplicate SlotId values
+        [Fact]
+        public async Task UniqueIndex_DuplicateSlotId_ThrowsMongoWriteException()
+        {
+            var duplicateSlotId = "SLOT-UNIQUE-TEST";
+            var slot1 = new EnergyBookingSlot
+            {
+                SlotId = duplicateSlotId,
+                StationId = "ST-TEST",
+                Date = DateTime.UtcNow.Date,
+                StartTime = "09:00",
+                EndTime = "10:00",
+                Capacity = 5,
+                Availability = 5,
+                Status = "Available"
+            };
+            var slot2 = new EnergyBookingSlot
+            {
+                SlotId = duplicateSlotId,
+                StationId = "ST-TEST",
+                Date = DateTime.UtcNow.Date,
+                StartTime = "10:00",
+                EndTime = "11:00",
+                Capacity = 5,
+                Availability = 5,
+                Status = "Available"
+            };
+
+            var collection = _database!.GetCollection<EnergyBookingSlot>("energyBookingSlots");
+            await collection.InsertOneAsync(slot1);
+
+            var ex = await Assert.ThrowsAsync<MongoWriteException>(() => collection.InsertOneAsync(slot2));
+            Assert.Equal(ServerErrorCategory.DuplicateKey, ex.WriteError.Category);
+        }
+
+        // DB-UX-02: Unique index prevents duplicate ReservationId values
+        [Fact]
+        public async Task UniqueIndex_DuplicateReservationId_ThrowsMongoWriteException()
+        {
+            var duplicateReservationId = "RES-UNIQUE-TEST";
+            var res1 = new EnergyReservation
+            {
+                ReservationId = duplicateReservationId,
+                SlotId = "SLOT-1",
+                StationId = "ST-TEST",
+                ProsumerNic = "123456789V",
+                Status = "Pending"
+            };
+            var res2 = new EnergyReservation
+            {
+                ReservationId = duplicateReservationId,
+                SlotId = "SLOT-2",
+                StationId = "ST-TEST",
+                ProsumerNic = "987654321V",
+                Status = "Pending"
+            };
+
+            var collection = _database!.GetCollection<EnergyReservation>("energyReservation");
+            await collection.InsertOneAsync(res1);
+
+            var ex = await Assert.ThrowsAsync<MongoWriteException>(() => collection.InsertOneAsync(res2));
+            Assert.Equal(ServerErrorCategory.DuplicateKey, ex.WriteError.Category);
         }
     }
 }
