@@ -142,6 +142,18 @@ function Layout({ children }) {
             "Microgrid Nodes",
             "☀️"
           )}
+
+          {navItem(
+            "/energy-slots",
+            "Energy Slots",
+            "⚡"
+          )}
+
+          {navItem(
+            "/reservations",
+            "Reservations",
+            "📋"
+          )}
         </div>
 
         {/* LOGOUT */}

@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using MicrogridApi.Data;
 using MicrogridApi.Dtos;
 using MicrogridApi.Models;
 using MongoDB.Driver;
@@ -46,11 +47,24 @@ namespace MicrogridApi.Tests.Integration
 
         public async Task InitializeAsync()
         {
-            _database = MongoIntegrationTestConfig.Connect(_connectionString, _testDbName);
+            try
+            {
+                _database = MongoIntegrationTestConfig.Connect(_connectionString, _testDbName);
 
-            // Clear collections for clean state (test DB only).
-            await _database.DropCollectionAsync("energyBookingSlots");
-            await _database.DropCollectionAsync("energyReservation");
+                // Clear collections for clean state (test DB only).
+                await _database.DropCollectionAsync("energyBookingSlots");
+                await _database.DropCollectionAsync("energyReservation");
+
+                // Preserve Viman unique-index setup on the isolated test database.
+                await MongoDbIndexConfigurator.ConfigureIndexesAsync(_database);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    "Integration test prerequisite missing: MongoDB is not reachable for the configured test URI. " +
+                    "Default is mongodb://localhost:27017; Atlas requires MICROGRID_TEST_MONGODB_URI. " +
+                    "Ensure MongoDB is running before executing integration tests.", ex);
+            }
         }
 
         public async Task DisposeAsync()
@@ -190,6 +204,70 @@ namespace MicrogridApi.Tests.Integration
             var response = await _client.PutAsJsonAsync($"/api/slots/64c8d5f3b1abcdef12345678", req);
 
             Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        }
+
+        // DB-UX-01: Unique index prevents duplicate SlotId values
+        [Fact]
+        public async Task UniqueIndex_DuplicateSlotId_ThrowsMongoWriteException()
+        {
+            var duplicateSlotId = "SLOT-UNIQUE-TEST";
+            var slot1 = new EnergyBookingSlot
+            {
+                SlotId = duplicateSlotId,
+                StationId = "ST-TEST",
+                Date = DateTime.UtcNow.Date,
+                StartTime = "09:00",
+                EndTime = "10:00",
+                Capacity = 5,
+                Availability = 5,
+                Status = "Available"
+            };
+            var slot2 = new EnergyBookingSlot
+            {
+                SlotId = duplicateSlotId,
+                StationId = "ST-TEST",
+                Date = DateTime.UtcNow.Date,
+                StartTime = "10:00",
+                EndTime = "11:00",
+                Capacity = 5,
+                Availability = 5,
+                Status = "Available"
+            };
+
+            var collection = _database!.GetCollection<EnergyBookingSlot>("energyBookingSlots");
+            await collection.InsertOneAsync(slot1);
+
+            var ex = await Assert.ThrowsAsync<MongoWriteException>(() => collection.InsertOneAsync(slot2));
+            Assert.Equal(ServerErrorCategory.DuplicateKey, ex.WriteError.Category);
+        }
+
+        // DB-UX-02: Unique index prevents duplicate ReservationId values
+        [Fact]
+        public async Task UniqueIndex_DuplicateReservationId_ThrowsMongoWriteException()
+        {
+            var duplicateReservationId = "RES-UNIQUE-TEST";
+            var res1 = new EnergyReservation
+            {
+                ReservationId = duplicateReservationId,
+                SlotId = "SLOT-1",
+                StationId = "ST-TEST",
+                ProsumerNic = "123456789V",
+                Status = "Pending"
+            };
+            var res2 = new EnergyReservation
+            {
+                ReservationId = duplicateReservationId,
+                SlotId = "SLOT-2",
+                StationId = "ST-TEST",
+                ProsumerNic = "987654321V",
+                Status = "Pending"
+            };
+
+            var collection = _database!.GetCollection<EnergyReservation>("energyReservation");
+            await collection.InsertOneAsync(res1);
+
+            var ex = await Assert.ThrowsAsync<MongoWriteException>(() => collection.InsertOneAsync(res2));
+            Assert.Equal(ServerErrorCategory.DuplicateKey, ex.WriteError.Category);
         }
     }
 }

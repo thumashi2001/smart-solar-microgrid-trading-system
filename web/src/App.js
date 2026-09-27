@@ -8,6 +8,8 @@ import AddMicrogridNode from "./pages/AddMicrogridNode";
 import MicrogridNodeDetails from "./pages/MicrogridNodeDetails";
 import EditMicrogridNode from "./pages/EditMicrogridNode";
 import BackofficeDashboard from "./pages/BackofficeDashboard";
+import EnergySlots from "./pages/EnergySlots";
+import ReservationManagement from "./pages/ReservationManagement";
 
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -97,6 +99,30 @@ function App() {
     </ProtectedRoute>
   }
 />
+
+        {/* Component 2 — Energy Booking Slot Management */}
+        <Route
+          path="/energy-slots"
+          element={
+            <ProtectedRoute allowedRoles={["Backoffice"]}>
+              <Layout>
+                <EnergySlots />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Component 2 — Reservation Monitoring (Backoffice) */}
+        <Route
+          path="/reservations"
+          element={
+            <ProtectedRoute allowedRoles={["Backoffice"]}>
+              <Layout>
+                <ReservationManagement />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
       </Routes>
     </BrowserRouter>
   );
