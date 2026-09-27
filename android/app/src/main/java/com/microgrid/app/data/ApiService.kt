@@ -7,18 +7,26 @@ interface ApiService {
 
     // ── Auth ──────────────────────────────────────────────────────────
     @POST("api/auth/login")
-    suspend fun login(@Body request: LoginRequest): Response<LoginResponse>
+    suspend fun login(
+        @Body request: LoginRequest
+    ): Response<LoginResponse>
 
     // ── Prosumer profile ──────────────────────────────────────────────
     @POST("api/prosumers/register")
-    suspend fun registerProsumer(@Body request: ProsumerRegisterRequest): Response<Any>
+    suspend fun registerProsumer(
+        @Body request: ProsumerRegisterRequest
+    ): Response<Any>
 
+
+    // Update prosumer profile
     @PUT("api/prosumers/{nic}")
     suspend fun updateProsumer(
         @Path("nic") nic: String,
         @Body request: ProsumerRegisterRequest
     ): Response<Any>
 
+
+    // Change prosumer password
     @PATCH("api/prosumers/{nic}/change-password")
     suspend fun changePassword(
         @Path("nic") nic: String,
@@ -98,4 +106,10 @@ interface ApiService {
      */
     @DELETE("api/reservations/{id}")
     suspend fun cancelReservation(@Path("id") id: String): Response<Any>
+
+    // Deactivate prosumer's own account
+    @PATCH("api/prosumers/{nic}/deactivate")
+    suspend fun deactivateProsumer(
+        @Path("nic") nic: String
+    ): Response<Any>
 }

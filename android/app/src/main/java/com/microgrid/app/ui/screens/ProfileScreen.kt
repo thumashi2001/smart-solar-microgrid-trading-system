@@ -39,7 +39,8 @@ fun ProfileScreen(
     onMyBookings: () -> Unit,
     onBookSlot: () -> Unit,
     // ── Auth ─────────────────────────────────────────────────────────────
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onBackToHome: () -> Unit
 ) {
     var photoUri by remember { mutableStateOf<Uri?>(null) }
     val launcher = rememberLauncherForActivityResult(
@@ -51,10 +52,28 @@ fun ProfileScreen(
             .fillMaxSize()
             .background(PageBg)
             .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(modifier = Modifier.height(24.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White)
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBackToHome) {
+                Icon(Icons.Filled.ArrowBack, contentDescription = "Back to Home")
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Profile", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = DarkGreen)
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(modifier = Modifier.height(8.dp))
 
         // ── Avatar ─────────────────────────────────────────────────────
         Box(
@@ -101,7 +120,7 @@ fun ProfileScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column {
-                ProfileMenuItem(Icons.Filled.BoltSharp, "Book Energy Slot", onBookSlot)
+                ProfileMenuItem(Icons.Filled.FlashOn, "Book Energy Slot", onBookSlot)
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp))
                 ProfileMenuItem(Icons.Filled.List, "My Bookings", onMyBookings)
             }
@@ -152,9 +171,9 @@ fun ProfileScreen(
             Spacer(modifier = Modifier.width(8.dp))
             Text("Logout")
         }
-
         Spacer(modifier = Modifier.height(16.dp))
     }
+}
 }
 
 @Composable

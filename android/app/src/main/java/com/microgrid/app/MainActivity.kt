@@ -11,8 +11,11 @@ import androidx.compose.ui.Modifier
 import com.microgrid.app.data.MicrogridNode
 import com.microgrid.app.data.Reservation
 import com.microgrid.app.data.Slot
+import com.microgrid.app.local.AppDatabase
+import com.microgrid.app.local.SessionEntity
 import com.microgrid.app.ui.screens.*
 import com.microgrid.app.ui.theme.MicrogridAppTheme
+import kotlinx.coroutines.launch
 
 // ──────────────────────────────────────────────────────────────────────
 // Navigation graph
@@ -23,6 +26,14 @@ sealed class Screen {
     object Register : Screen()
 
     // Profile hub
+    object Dashboard : Screen()
+    object Bookings : Screen()
+    object BookingHistory : Screen()
+    object SearchBookings : Screen()
+
+    data class BookingDetails(
+        val bookingId: String
+    ) : Screen()
     object Profile : Screen()
     object MyProfile : Screen()
     object ChangePassword : Screen()
@@ -45,24 +56,52 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        val db = AppDatabase.getDatabase(applicationContext)
+
         setContent {
             MicrogridAppTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     var currentScreen by remember { mutableStateOf<Screen>(Screen.Login) }
-
                     // Logged-in user state — kept alive across screens
                     var loggedInFullName by remember { mutableStateOf("") }
                     var loggedInNic by remember { mutableStateOf("") }
+                    var isCheckingSession by remember { mutableStateOf(true) }
+                    val scope = rememberCoroutineScope()
+
+                    LaunchedEffect(Unit) {
+                        val session = db.sessionDao().getSession()
+                        if (session != null) {
+                            loggedInFullName = session.fullName
+                            loggedInNic = session.nic
+                            currentScreen = Screen.Dashboard
+                        }
+                        isCheckingSession = false
+                    }
+
+                    if (isCheckingSession) {
+                        return@Surface
+                    }
 
                     when (val screen = currentScreen) {
 
                         // ── Auth ─────────────────────────────────────────────────────
                         is Screen.Login -> {
                             LoginScreen(
-                                onLoginSuccess = { _, fullName, _, nic ->
+                                onLoginSuccess = { _, fullName, token, nic ->
                                     loggedInFullName = fullName
                                     loggedInNic = nic
-                                    currentScreen = Screen.Profile
+                                    scope.launch {
+                                        db.sessionDao().saveSession(
+                                            SessionEntity(
+                                                nic = nic,
+                                                fullName = fullName,
+                                                token = token,
+                                                photoUri = null
+                                            )
+                                        )
+                                    }
+                                    currentScreen = Screen.Dashboard
                                 },
                                 onNavigateToRegister = { currentScreen = Screen.Register }
                             )
@@ -73,8 +112,51 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToLogin = { currentScreen = Screen.Login }
                             )
                         }
-
                         // ── Profile hub ──────────────────────────────────────────────
+                        is Screen.Dashboard -> {
+                            ProsumerDashboardScreen(
+                                fullName = loggedInFullName,
+                                nic = loggedInNic,
+                                onProfileClick = { currentScreen = Screen.Profile },
+                                onBookingsClick = { currentScreen = Screen.Bookings },
+                                onHistoryClick = { currentScreen = Screen.BookingHistory },
+                                onSearchClick = { currentScreen = Screen.SearchBookings }
+                            )
+                        }
+                        is Screen.Bookings -> {
+                            BookingsScreen(
+                                nic = loggedInNic,
+                                onBackClick = { currentScreen = Screen.Dashboard },
+                                onBookingClick = { bookingId -> currentScreen = Screen.BookingDetails(bookingId) },
+                                onHomeClick = { currentScreen = Screen.Dashboard },
+                                onProfileClick = { currentScreen = Screen.Profile }
+                            )
+                        }
+                        is Screen.BookingHistory -> {
+                            BookingHistoryScreen(
+                                nic = loggedInNic,
+                                onBackClick = { currentScreen = Screen.Dashboard },
+                                onBookingClick = { bookingId -> currentScreen = Screen.BookingDetails(bookingId) },
+                                onHomeClick = { currentScreen = Screen.Dashboard },
+                                onBookingsClick = { currentScreen = Screen.Bookings },
+                                onProfileClick = { currentScreen = Screen.Profile }
+                            )
+                        }
+                        is Screen.SearchBookings -> {
+                            SearchBookingsScreen(
+                                nic = loggedInNic,
+                                onBackClick = { currentScreen = Screen.Dashboard },
+                                onBookingClick = { bookingId -> currentScreen = Screen.BookingDetails(bookingId) }
+                            )
+                        }
+                        is Screen.BookingDetails -> {
+                            val screen = currentScreen as Screen.BookingDetails
+                            BookingDetailsScreen(
+                                bookingId = screen.bookingId,
+                                nic = loggedInNic,
+                                onBackClick = { currentScreen = Screen.Bookings }
+                            )
+                        }
                         is Screen.Profile -> {
                             ProfileScreen(
                                 fullName = loggedInFullName,
@@ -87,17 +169,25 @@ class MainActivity : ComponentActivity() {
                                 onMyBookings = { currentScreen = Screen.MyBookings },
                                 onBookSlot = { currentScreen = Screen.StationSelection },
                                 onLogout = {
+                                    scope.launch { db.sessionDao().clearSession() }
                                     loggedInFullName = ""
                                     loggedInNic = ""
                                     currentScreen = Screen.Login
-                                }
+                                },
+                                onBackToHome = { currentScreen = Screen.Dashboard }
                             )
                         }
                         is Screen.MyProfile -> {
                             MyProfileScreen(
                                 fullName = loggedInFullName,
                                 nic = loggedInNic,
-                                onBack = { currentScreen = Screen.Profile }
+                                onBack = { currentScreen = Screen.Profile },
+                                onAccountDeactivated = {
+                                    scope.launch { db.sessionDao().clearSession() }
+                                    loggedInFullName = ""
+                                    loggedInNic = ""
+                                    currentScreen = Screen.Login
+                                }
                             )
                         }
                         is Screen.ChangePassword -> {
