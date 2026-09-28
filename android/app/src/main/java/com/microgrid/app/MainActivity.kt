@@ -130,37 +130,39 @@ class MainActivity : ComponentActivity() {
                                     loggedInFullName = fullName
                                     loggedInNic = nic
                                     scope.launch {
-                                        db.sessionDao().saveSession(
-                                            SessionEntity(
-                                                nic = nic,
-                                                fullName = fullName,
+                                        if (role == "Prosumer" || role == "GridOperator") {
+                                            // Save the session first, then navigate
+                                            db.sessionDao().saveSession(
+                                                SessionEntity(
+                                                    nic = nic,
+                                                    fullName = fullName,
+                                                    token = token,
+                                                    role = role,
+                                                    photoUri = null,
+                                                ),
+                                            )
+                                            smartSolarApp.sessionManager.saveSession(
                                                 token = token,
                                                 role = role,
-                                                photoUri = null,
-                                            ),
-                                        )
-                                        smartSolarApp.sessionManager.saveSession(
-                                            token = token,
-                                            role = role,
-                                            fullName = fullName,
-                                            identifier = nic.ifBlank { fullName },
-                                        )
-                                    }
-                                    when (role) {
-                                        "GridOperator" -> {
-                                            startActivity(Intent(this@MainActivity, OperatorHomeActivity::class.java))
-                                            finish()
+                                                fullName = fullName,
+                                                identifier = nic.ifBlank { fullName },
+                                            )
+                                        } else {
+                                            db.sessionDao().clearSession()
+                                            smartSolarApp.sessionManager.clearSession()
                                         }
-                                        "Prosumer" -> currentScreen = Screen.Dashboard
-                                        else -> {
-                                            // Do not elevate Backoffice/unknown roles into operator or prosumer flows.
-                                            scope.launch {
-                                                db.sessionDao().clearSession()
-                                                smartSolarApp.sessionManager.clearSession()
+
+                                        when (role) {
+                                            "GridOperator" -> {
+                                                startActivity(Intent(this@MainActivity, OperatorHomeActivity::class.java))
+                                                finish()
                                             }
-                                            loggedInFullName = ""
-                                            loggedInNic = ""
-                                            currentScreen = Screen.Login
+                                            "Prosumer" -> currentScreen = Screen.Dashboard
+                                            else -> {
+                                                loggedInFullName = ""
+                                                loggedInNic = ""
+                                                currentScreen = Screen.Login
+                                            }
                                         }
                                     }
                                 },
