@@ -1,258 +1,102 @@
-import {
-  Link,
-  useLocation,
-  useNavigate,
-} from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
+// Brand colours Bootstrap doesn't have
 const sidebarBg = "#0B3B2E";
+const pageBg = "#F7F5F1";
 
 function Layout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const fullName =
-    localStorage.getItem("fullName") || "User";
+  const fullName = localStorage.getItem("fullName") || "User";
+  const role = localStorage.getItem("role") || "";
 
-  const role =
-    localStorage.getItem("role") || "";
-
+  // Clears the saved login and returns to the login page.
   const handleLogout = () => {
     localStorage.clear();
     navigate("/");
   };
 
+  // One sidebar link; highlighted when the current path matches.
   const navItem = (to, label, icon) => {
     const active =
       location.pathname === to ||
-      (to !== "/" &&
-        location.pathname.startsWith(`${to}/`));
+      (to !== "/" && location.pathname.startsWith(`${to}/`));
 
     return (
       <Link
         to={to}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "12px",
-          padding: "12px 20px",
-          margin: "4px 12px",
-          borderRadius: "10px",
-          color: "#fff",
-          textDecoration: "none",
-          fontSize: "14px",
-          fontWeight: 500,
-          background: active
-            ? "rgba(255,255,255,0.15)"
-            : "transparent",
-          transition: "background 0.2s ease",
-        }}
+        className={`d-flex align-items-center gap-3 text-white text-decoration-none rounded-3 px-3 py-2 mx-3 my-1 small fw-medium ${
+          active ? "bg-white bg-opacity-25" : ""
+        }`}
       >
-        <span style={{ fontSize: "16px" }}>
-          {icon}
-        </span>
-
+        <i className={`bi ${icon} fs-6`}></i>
         {label}
       </Link>
     );
   };
 
   return (
-    <div
-      style={{
-        display: "flex",
-        minHeight: "100vh",
-        fontFamily:
-          "'Segoe UI', Arial, sans-serif",
-      }}
-    >
+    <div className="d-flex min-vh-100">
       {/* LEFT SIDEBAR */}
       <div
-        style={{
-          width: "260px",
-          background: sidebarBg,
-          display: "flex",
-          flexDirection: "column",
-          flexShrink: 0,
-        }}
+        className="d-flex flex-column flex-shrink-0"
+        style={{ width: "260px", background: sidebarBg }}
       >
         {/* LOGO */}
-        <div
-          style={{
-            padding: "24px 20px",
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-          }}
-        >
-          <span style={{ fontSize: "30px" }}>
-            ☀️
-          </span>
-
+        <div className="d-flex align-items-center gap-2 px-3 py-4">
+          <i className="bi bi-brightness-high-fill fs-2 text-warning"></i>
           <div>
-            <div
-              style={{
-                color: "#fff",
-                fontWeight: 700,
-                fontSize: "17px",
-                lineHeight: 1.2,
-              }}
-            >
-              Smart Solar
-            </div>
-
-            <div
-              style={{
-                color:
-                  "rgba(255,255,255,0.6)",
-                fontSize: "11px",
-              }}
-            >
+            <div className="text-white fw-bold lh-sm">Smart Solar</div>
+            <div className="text-white text-opacity-75" style={{ fontSize: "11px" }}>
               Clean Energy Brighter Tomorrow
             </div>
           </div>
         </div>
 
         {/* NAVIGATION */}
-        <div
-          style={{
-            marginTop: "16px",
-            flexGrow: 1,
-          }}
-        >
-          {navItem(
-            "/dashboard",
-            "Dashboard",
-            "📊"
-          )}
-
-          {navItem(
-            "/users",
-            "Users",
-            "👤"
-          )}
-
-          {navItem(
-            "/prosumers",
-            "Prosumers",
-            "🔌"
-          )}
-
-          {navItem(
-            "/microgrid-nodes",
-            "Microgrid Nodes",
-            "☀️"
-          )}
-
-          {navItem(
-            "/energy-slots",
-            "Energy Slots",
-            "⚡"
-          )}
-
-          {navItem(
-            "/reservations",
-            "Reservations",
-            "📋"
-          )}
+        <div className="mt-3 flex-grow-1">
+          {navItem("/dashboard", "Dashboard", "bi-bar-chart-line")}
+          {navItem("/users", "Users", "bi-person")}
+          {navItem("/prosumers", "Prosumers", "bi-plug")}
+          {navItem("/microgrid-nodes", "Microgrid Nodes", "bi-sun")}
+          {navItem("/energy-slots", "Energy Slots", "bi-lightning-charge")}
+          {navItem("/reservations", "Reservations", "bi-clipboard-check")}
         </div>
 
         {/* LOGOUT */}
-        <div
-          style={{
-            padding: "20px",
-            borderTop:
-              "1px solid rgba(255,255,255,0.12)",
-          }}
-        >
+        <div className="p-3 border-top border-light border-opacity-25">
           <button
             type="button"
             onClick={handleLogout}
-            style={{
-              width: "100%",
-              background: "transparent",
-              border:
-                "1px solid rgba(255,255,255,0.35)",
-              color: "#fff",
-              borderRadius: "8px",
-              padding: "10px",
-              cursor: "pointer",
-              fontSize: "14px",
-              fontWeight: 500,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "8px",
-            }}
+            className="btn btn-outline-light w-100 d-flex align-items-center justify-content-center gap-2"
           >
-            <span style={{ fontSize: "16px" }}>
-              🚪
-            </span>
+            <i className="bi bi-box-arrow-right"></i>
             Logout
           </button>
         </div>
       </div>
 
       {/* MAIN AREA */}
-      <div
-        style={{
-          flexGrow: 1,
-          background: "#F7F5F1",
-          minWidth: 0,
-        }}
-      >
+      <div className="flex-grow-1" style={{ background: pageBg, minWidth: 0 }}>
         {/* TOP BAR */}
-        <div
-          style={{
-            background: "#fff",
-            borderBottom:
-              "1px solid #E4E1DA",
-            padding: "16px 32px",
-            display: "flex",
-            justifyContent: "flex-end",
-            alignItems: "center",
-            gap: "12px",
-          }}
-        >
-          <div style={{ textAlign: "right" }}>
-            <div
-              style={{
-                fontWeight: 600,
-                fontSize: "14px",
-                color: "#1C1F1E",
-              }}
-            >
-              {fullName}
-            </div>
-
-            <div
-              style={{
-                color: "#6B6862",
-                fontSize: "12px",
-              }}
-            >
+        <div className="bg-white border-bottom d-flex justify-content-end align-items-center gap-3 px-4 py-3">
+          <div className="text-end">
+            <div className="fw-semibold small">{fullName}</div>
+            <div className="text-secondary" style={{ fontSize: "12px" }}>
               {role}
             </div>
           </div>
 
           <div
+            className="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white border border-2"
             style={{
               width: "38px",
               height: "38px",
-              borderRadius: "50%",
-              background:
-                "linear-gradient(135deg, #1E7A4D, #0B3B2E)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 700,
-              color: "#fff",
-              fontSize: "15px",
-              border: "2px solid #E4E1DA",
+              background: "linear-gradient(135deg, #1E7A4D, #0B3B2E)",
             }}
           >
-            {fullName
-              .charAt(0)
-              .toUpperCase()}
+            {fullName.charAt(0).toUpperCase()}
           </div>
         </div>
 

@@ -11,6 +11,7 @@ function Users() {
   const [editingUser, setEditingUser] = useState(null);
   const [form, setForm] = useState({ email: "", passwordHash: "", fullName: "", role: "Backoffice" });
 
+  // Loads all Backoffice and Grid Operator users from the API.
   const loadUsers = () => {
     api.get("/users").then((res) => setUsers(res.data));
   };
@@ -33,6 +34,7 @@ function Users() {
 
   const closeModal = () => setShowModal(false);
 
+  // Creates a new user or saves changes to the one being edited.
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (editingUser) {
@@ -75,144 +77,209 @@ function Users() {
   ];
 
   return (
-    <div style={{ padding: "40px", fontFamily: "'Segoe UI', Arial, sans-serif", background: "#F7F5F1", minHeight: "100vh" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
+    <div className="container-fluid p-4 p-md-5">
+      {/* Header */}
+      <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
-          <h2 style={{ margin: 0, color: "#1C1F1E" }}>User Management</h2>
-          <p style={{ color: "#6B6862", margin: "4px 0 0 0" }}>Manage Backoffice and Grid Operator accounts.</p>
+          <h2 className="h3 mb-1">User Management</h2>
+          <p className="text-secondary mb-0">Manage Backoffice and Grid Operator accounts.</p>
         </div>
-        <button onClick={openAdd} style={btnPrimary}>+ Add User</button>
+        <button onClick={openAdd} className="btn btn-success fw-semibold">
+          <i className="bi bi-plus-lg me-1"></i>
+          Add User
+        </button>
       </div>
 
       {/* Summary cards */}
-      <div style={{ display: "flex", gap: "16px", marginBottom: "20px" }}>
-        <SummaryCard icon="👥" label="Total Users" value={totalCount} bg="#E7EEF5" />
-        <SummaryCard icon="✅" label="Active Users" value={activeCount} bg="#E5F3EA" />
-        <SummaryCard icon="🚫" label="Deactivated" value={deactivatedCount} bg="#F7E7E5" />
+      <div className="row g-3 mb-4">
+        <div className="col-12 col-md-4">
+          <SummaryCard icon="bi-people" label="Total Users" value={totalCount} bg="bg-primary-subtle" />
+        </div>
+        <div className="col-12 col-md-4">
+          <SummaryCard icon="bi-check-circle" label="Active Users" value={activeCount} bg="bg-success-subtle" />
+        </div>
+        <div className="col-12 col-md-4">
+          <SummaryCard icon="bi-slash-circle" label="Deactivated" value={deactivatedCount} bg="bg-danger-subtle" />
+        </div>
       </div>
 
       {/* Chart */}
-      <div style={{ background: "#fff", border: "1px solid #E4E1DA", borderRadius: "14px", padding: "20px", marginBottom: "20px" }}>
-        <h4 style={{ margin: "0 0 11px 0", color: "#1C1F1E" }}>User Status Overview</h4>
-        <ResponsiveContainer width="100%" height={170}>
-          <BarChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#EFEDE7" />
-            <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-            <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-            <Tooltip />
-            <Bar dataKey="count" fill={accent} radius={[6, 6, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+      <div className="card shadow-sm mb-4">
+        <div className="card-body">
+          <h5 className="card-title mb-3">User Status Overview</h5>
+          <ResponsiveContainer width="100%" height={170}>
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#EFEDE7" />
+              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+              <Tooltip />
+              <Bar dataKey="count" fill={accent} radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       {/* Search bar */}
-      <div style={{ marginBottom: "16px" }}>
+      <div className="mb-3" style={{ maxWidth: "320px" }}>
         <input
           type="text"
+          className="form-control"
           placeholder="Search by name..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ ...input, width: "320px" }}
         />
       </div>
 
-      <div style={{ background: "#fff", border: "1px solid #E4E1DA", borderRadius: "14px", overflow: "hidden" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ background: "#F3F1EC", textAlign: "left" }}>
-              <th style={th}>Full Name</th>
-              <th style={th}>Email</th>
-              <th style={th}>Role</th>
-              <th style={th}>Status</th>
-              <th style={th}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredUsers.map((u) => (
-              <tr key={u.id} style={{ borderBottom: "1px solid #EFEDE7" }}>
-                <td style={td}>{u.fullName}</td>
-                <td style={{ ...td, color: "#6B6862" }}>{u.email}</td>
-                <td style={td}>
-                  <span style={badge(u.role === "Backoffice" ? "#FBEDE3" : "#E7EEF5", u.role === "Backoffice" ? "#9A5B2E" : "#33587A")}>
-                    {u.role}
-                  </span>
-                </td>
-                <td style={td}>
-                  <span style={badge(u.status === "active" ? "#E5F3EA" : "#F7E7E5", u.status === "active" ? "#2E7D4F" : "#B14A3C")}>
-                    {u.status === "active" ? "Active" : "Deactivated"}
-                  </span>
-                </td>
-                <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
-                  <button onClick={() => openEdit(u)} style={btnSmall}>Edit</button>
-                  {u.status === "active" ? (
-                    <button onClick={() => deactivate(u.id)} style={btnSmall}>Deactivate</button>
-                  ) : (
-                    <button onClick={() => reactivate(u.id)} style={btnSmall}>Reactivate</button>
-                  )}
-                  <button onClick={() => remove(u.id)} style={{ ...btnSmall, color: "#B14A3C", borderColor: "#E8B4AC" }}>Delete</button>
-                </td>
+      {/* Users table */}
+      <div className="card shadow-sm">
+        <div className="table-responsive">
+          <table className="table table-hover align-middle mb-0">
+            <thead className="table-light">
+              <tr className="small text-uppercase text-secondary">
+                <th className="px-4 py-3">Full Name</th>
+                <th className="px-4 py-3">Email</th>
+                <th className="px-4 py-3">Role</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3"></th>
               </tr>
-            ))}
-            {filteredUsers.length === 0 && (
-              <tr><td colSpan="5" style={{ ...td, textAlign: "center", color: "#6B6862" }}>No users found.</td></tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filteredUsers.map((u) => (
+                <tr key={u.id}>
+                  <td className="px-4 py-3">{u.fullName}</td>
+                  <td className="px-4 py-3 text-secondary">{u.email}</td>
+                  <td className="px-4 py-3">
+                    <span className={`badge rounded-pill ${u.role === "Backoffice" ? "text-bg-warning" : "text-bg-info"}`}>
+                      {u.role}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`badge rounded-pill ${u.status === "active" ? "text-bg-success" : "text-bg-danger"}`}>
+                      {u.status === "active" ? "Active" : "Deactivated"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-end text-nowrap">
+                    <button onClick={() => openEdit(u)} className="btn btn-sm btn-outline-secondary ms-1">
+                      Edit
+                    </button>
+                    {u.status === "active" ? (
+                      <button onClick={() => deactivate(u.id)} className="btn btn-sm btn-outline-secondary ms-1">
+                        Deactivate
+                      </button>
+                    ) : (
+                      <button onClick={() => reactivate(u.id)} className="btn btn-sm btn-outline-secondary ms-1">
+                        Reactivate
+                      </button>
+                    )}
+                    <button onClick={() => remove(u.id)} className="btn btn-sm btn-outline-danger ms-1">
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {filteredUsers.length === 0 && (
+                <tr>
+                  <td colSpan="5" className="text-center text-secondary py-4">
+                    No users found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
+      {/* Add / Edit modal */}
       {showModal && (
-        <div style={overlay}>
-          <form onSubmit={handleSubmit} style={modalCard}>
-            <h3 style={{ margin: "0 0 6px 0" }}>{editingUser ? "Edit user" : "Create user"}</h3>
-            <p style={{ margin: "0 0 18px 0", color: "#6B6862", fontSize: "13px" }}>Backoffice and Grid Operator accounts only</p>
+        <>
+          <div className="modal d-block" tabIndex="-1" role="dialog">
+            <div className="modal-dialog modal-dialog-centered">
+              <form onSubmit={handleSubmit} className="modal-content">
+                <div className="modal-header">
+                  <div>
+                    <h5 className="modal-title">{editingUser ? "Edit user" : "Create user"}</h5>
+                    <div className="small text-secondary">Backoffice and Grid Operator accounts only</div>
+                  </div>
+                  <button type="button" className="btn-close" aria-label="Close" onClick={closeModal}></button>
+                </div>
 
-            <label style={label}>Full name</label>
-            <input required value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} style={input} />
+                <div className="modal-body">
+                  <div className="mb-3">
+                    <label className="form-label fw-semibold small">Full name</label>
+                    <input
+                      required
+                      className="form-control"
+                      value={form.fullName}
+                      onChange={(e) => setForm({ ...form, fullName: e.target.value })}
+                    />
+                  </div>
 
-            <label style={label}>Email</label>
-            <input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} style={input} />
+                  <div className="mb-3">
+                    <label className="form-label fw-semibold small">Email</label>
+                    <input
+                      required
+                      type="email"
+                      className="form-control"
+                      value={form.email}
+                      onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    />
+                  </div>
 
-            <label style={label}>Role</label>
-            <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} style={input}>
-              <option>Backoffice</option>
-              <option>GridOperator</option>
-            </select>
+                  <div className="mb-3">
+                    <label className="form-label fw-semibold small">Role</label>
+                    <select
+                      className="form-select"
+                      value={form.role}
+                      onChange={(e) => setForm({ ...form, role: e.target.value })}
+                    >
+                      <option>Backoffice</option>
+                      <option>GridOperator</option>
+                    </select>
+                  </div>
 
-            <label style={label}>{editingUser ? "New password (leave blank to keep current)" : "Temporary password"}</label>
-            <input type="password" value={form.passwordHash} onChange={(e) => setForm({ ...form, passwordHash: e.target.value })} style={input} required={!editingUser} />
+                  <div className="mb-1">
+                    <label className="form-label fw-semibold small">
+                      {editingUser ? "New password (leave blank to keep current)" : "Temporary password"}
+                    </label>
+                    <input
+                      type="password"
+                      className="form-control"
+                      value={form.passwordHash}
+                      onChange={(e) => setForm({ ...form, passwordHash: e.target.value })}
+                      required={!editingUser}
+                    />
+                  </div>
+                </div>
 
-            <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end", marginTop: "8px" }}>
-              <button type="button" onClick={closeModal} style={btnSecondary}>Cancel</button>
-              <button type="submit" style={btnPrimary}>{editingUser ? "Save changes" : "Create user"}</button>
+                <div className="modal-footer">
+                  <button type="button" onClick={closeModal} className="btn btn-outline-secondary">
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-success fw-semibold">
+                    {editingUser ? "Save changes" : "Create user"}
+                  </button>
+                </div>
+              </form>
             </div>
-          </form>
-        </div>
+          </div>
+          <div className="modal-backdrop show"></div>
+        </>
       )}
     </div>
   );
 }
+
+// One coloured statistic card in the summary row.
 function SummaryCard({ icon, label, value, bg }) {
   return (
-    <div style={{ flex: 1, background: bg, borderRadius: "10px", padding: "10px 14px", display: "flex", alignItems: "center", gap: "10px" }}>
-      <div style={{ fontSize: "18px" }}>{icon}</div>
+    <div className={`rounded-3 p-3 d-flex align-items-center gap-3 h-100 ${bg}`}>
+      <i className={`bi ${icon} fs-4`}></i>
       <div>
-        <div style={{ fontSize: "18px", fontWeight: 700, color: "#1C1F1E", lineHeight: 1.1 }}>{value}</div>
-        <div style={{ fontSize: "11px", color: "#6B6862" }}>{label}</div>
+        <div className="fs-4 fw-bold lh-1">{value}</div>
+        <div className="small text-secondary">{label}</div>
       </div>
     </div>
   );
 }
-
-
-const th = { padding: "14px 20px", fontSize: "12px", fontWeight: 600, color: "#6B6862", textTransform: "uppercase", letterSpacing: "0.04em" };
-const td = { padding: "14px 20px", fontSize: "14px" };
-const badge = (bg, color) => ({ padding: "4px 10px", borderRadius: "999px", fontSize: "12px", fontWeight: 600, background: bg, color });
-const btnPrimary = { background: accent, color: "#fff", border: "none", borderRadius: "10px", padding: "10px 18px", fontSize: "14px", fontWeight: 600, cursor: "pointer" };
-const btnSecondary = { background: "none", border: "1px solid #D8D4CB", borderRadius: "10px", padding: "10px 18px", fontSize: "14px", fontWeight: 600, cursor: "pointer", color: "#3A3733" };
-const btnSmall = { background: "none", border: "1px solid #D8D4CB", borderRadius: "8px", padding: "6px 12px", fontSize: "13px", fontWeight: 600, cursor: "pointer", color: "#3A3733", marginLeft: "6px" };
-const overlay = { position: "fixed", inset: 0, background: "rgba(28,31,30,0.45)", display: "flex", alignItems: "center", justifyContent: "center" };
-const modalCard = { width: "380px", background: "#fff", borderRadius: "16px", padding: "32px", boxSizing: "border-box" };
-const label = { display: "block", fontSize: "13px", fontWeight: 600, color: "#3A3733", marginBottom: "6px", marginTop: "14px" };
-const input = { width: "100%", boxSizing: "border-box", padding: "10px 12px", border: "1px solid #D8D4CB", borderRadius: "8px", fontSize: "14px", fontFamily: "inherit" };
 
 export default Users;
