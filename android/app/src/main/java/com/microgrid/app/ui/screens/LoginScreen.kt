@@ -105,10 +105,10 @@ fun LoginScreen(
                                 isLoading = false
                                 if (response.isSuccessful && response.body() != null) {
                                     val body = response.body()!!
-                                    if (body.role == "Prosumer") {
+                                    if (body.role == "Prosumer" || body.role == "GridOperator") {
                                         onLoginSuccess(body.role, body.fullName, body.token, body.nic)
                                     } else {
-                                        errorMessage = "This app is for Prosumers only."
+                                        errorMessage = "Backoffice accounts should use the web application."
                                     }
                                 } else {
                                     val apiError = response.errorBody()?.string()

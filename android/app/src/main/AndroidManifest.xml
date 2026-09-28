@@ -28,16 +28,11 @@
             android:name="com.google.android.geo.API_KEY"
             android:value="${MAPS_API_KEY}" />
 
-        <!-- Single launcher: routes GridOperator → operator flows, Prosumer → profile hub -->
+        <!-- Backup login screen (View-based). No longer the launcher; the Compose login in MainActivity opens first. -->
         <activity
             android:name=".ui.login.LoginActivity"
-            android:exported="true"
-            android:windowSoftInputMode="adjustResize">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.operator.OperatorHomeActivity"
@@ -74,12 +69,17 @@
             android:name=".ui.map.StationsMapActivity"
             android:exported="false" />
 
-        <!-- Thumashi auth/profile Compose hub (opened from LoginActivity / register link) -->
+        <!-- Single launcher: Compose auth/profile hub. Routes GridOperator → operator flows, Prosumer → dashboard. -->
         <activity
             android:name="com.microgrid.app.MainActivity"
-            android:exported="false"
+            android:exported="true"
             android:label="@string/profile_hub_title"
             android:theme="@style/Theme.MicrogridApp"
-            android:windowSoftInputMode="adjustResize" />
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>
