@@ -14,7 +14,7 @@ function ReservationManagement() {
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("all");
-  const [successMessage, setSuccessMessage] = useState("");
+  // const [successMessage, setSuccessMessage] = useState(""); // Removed since unused
 
   const loadReservations = useCallback(async () => {
     try {
@@ -61,136 +61,148 @@ function ReservationManagement() {
   }), [reservations, selectedStatus, searchQuery]);
 
   // ── Helpers ────────────────────────────────────────────────────
-  const showSuccess = (msg) => {
-    setSuccessMessage(msg);
-    setTimeout(() => setSuccessMessage(""), 4000);
-  };
-
   const fmtDate = (d) => {
     if (!d) return "-";
     try { return new Date(d).toISOString().replace("T", " ").slice(0, 16) + " UTC"; } catch { return d; }
   };
 
-  const statusStyle = (status) => {
+  const getStatusBadgeClass = (status) => {
     switch (status) {
-      case "Approved": return { bg: "#E6F4EA", color: "#137333" };
-      case "Cancelled": return { bg: "#FCE8E6", color: "#C5221F" };
-      case "Completed": return { bg: "#E8F0FE", color: "#1A73E8" };
-      default: return { bg: "#FEF7E0", color: "#B06000" }; // Pending
+      case "Approved": return "bg-success bg-opacity-10 text-success border-success";
+      case "Cancelled": return "bg-danger bg-opacity-10 text-danger border-danger";
+      case "Completed": return "bg-primary bg-opacity-10 text-primary border-primary";
+      default: return "bg-warning bg-opacity-10 text-warning border-warning"; // Pending
     }
   };
 
-  // ── Design tokens ──────────────────────────────────────────────
-  const c = {
-    primary: "#0B3B2E", accent: "#1E7A4D", bg: "#F7F5F1",
-    card: "#fff", border: "#E4E1DA", textMain: "#1C1F1E", textMuted: "#6B6862",
-    green: "#137333", red: "#C5221F",
+  const getStatusDotColor = (status) => {
+    switch (status) {
+      case "Approved": return "#198754"; // Bootstrap success
+      case "Cancelled": return "#dc3545"; // Bootstrap danger
+      case "Completed": return "#0d6efd"; // Bootstrap primary
+      default: return "#ffc107"; // Bootstrap warning
+    }
   };
-  const inputStyle = {
-    width: "100%", padding: "10px 12px", borderRadius: "8px",
-    border: `1px solid ${c.border}`, fontSize: "14px", outline: "none",
-    boxSizing: "border-box", background: "#fff", color: c.textMain,
+
+  // ── Design tokens (Brand Colors) ───────────────────────────────
+  const brand = {
+    dark: "#0B3B2E",
+    green: "#1E7A4D",
+    sun: "#FFD54F",
+    bg: "#F7F5F1",
   };
 
   // ================================================================
   return (
-    <div style={{ padding: "32px", maxWidth: "1400px", margin: "0 auto", fontFamily: "'Segoe UI', Arial, sans-serif" }}>
+    <div className="container-fluid py-4" style={{ backgroundColor: brand.bg, minHeight: "100vh" }}>
 
       {/* HEADER */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px", flexWrap: "wrap", gap: "16px" }}>
-        <div>
-          <h1 style={{ fontSize: "26px", fontWeight: 700, color: c.textMain, margin: "0 0 6px 0" }}>
+      <div className="row mb-4 align-items-start">
+        <div className="col-12 col-md-8 mb-3 mb-md-0">
+          <h1 className="h3 fw-bold" style={{ color: brand.dark }}>
             📋 Reservation Management
           </h1>
-          <p style={{ margin: 0, color: c.textMuted, fontSize: "14px" }}>
+          <p className="text-muted mb-0">
             Monitor all prosumer energy booking reservations across all microgrid stations.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={loadReservations}
-          style={{ padding: "10px 18px", borderRadius: "8px", border: `1px solid ${c.border}`, background: "#fff", color: c.textMain, fontSize: "14px", fontWeight: 600, cursor: "pointer" }}
-        >
-          ↻ Refresh
-        </button>
+        <div className="col-12 col-md-4 text-md-end">
+          <button
+            type="button"
+            className="btn btn-light shadow-sm fw-semibold"
+            onClick={loadReservations}
+          >
+            ↻ Refresh
+          </button>
+        </div>
       </div>
 
       {/* BANNERS */}
-      {successMessage && (
-        <div style={{ background: "#E6F4EA", border: "1px solid #CEEAD6", color: c.green, padding: "12px 18px", borderRadius: "8px", marginBottom: "20px", fontSize: "14px", fontWeight: 500 }}>
-          ✓ {successMessage}
-        </div>
-      )}
       {error && (
-        <div style={{ background: "#FCE8E6", border: "1px solid #FAD2CF", color: c.red, padding: "12px 18px", borderRadius: "8px", marginBottom: "20px", fontSize: "14px", fontWeight: 500, display: "flex", justifyContent: "space-between" }}>
-          <span>⚠ {error}</span>
-          <button type="button" onClick={() => setError("")} style={{ background: "none", border: "none", color: c.red, cursor: "pointer", fontWeight: 700 }}>✕</button>
+        <div className="alert alert-danger d-flex align-items-center justify-content-between mb-4 py-2 shadow-sm" role="alert">
+          <span><span className="fw-bold me-2">⚠</span> {error}</span>
+          <button type="button" className="btn-close" onClick={() => setError("")} aria-label="Close"></button>
         </div>
       )}
 
       {/* KPI CARDS */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "16px", marginBottom: "24px" }}>
+      <div className="row g-3 mb-4">
         {[
-          { label: "Total", value: stats.total, bg: "#F7F5F1", color: c.textMain },
-          { label: "Pending", value: stats.pending, bg: "#FEF7E0", color: "#B06000" },
-          { label: "Approved", value: stats.approved, bg: "#E6F4EA", color: c.green },
-          { label: "Completed", value: stats.completed, bg: "#E8F0FE", color: "#1A73E8" },
-          { label: "Cancelled", value: stats.cancelled, bg: "#FCE8E6", color: c.red },
+          { label: "Total", value: stats.total, style: { backgroundColor: "#fff", color: "#1C1F1E" } },
+          { label: "Pending", value: stats.pending, style: { backgroundColor: "#FEF7E0", color: "#B06000" } },
+          { label: "Approved", value: stats.approved, style: { backgroundColor: "#E6F4EA", color: "#137333" } },
+          { label: "Completed", value: stats.completed, style: { backgroundColor: "#E8F0FE", color: "#1A73E8" } },
+          { label: "Cancelled", value: stats.cancelled, style: { backgroundColor: "#FCE8E6", color: "#C5221F" } },
         ].map((card) => (
-          <div key={card.label} style={{ background: card.bg, borderRadius: "12px", padding: "16px", border: `1px solid ${c.border}`, cursor: "pointer" }}
-            onClick={() => setSelectedStatus(card.label === "Total" ? "all" : card.label)}>
-            <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", color: card.color, letterSpacing: "0.5px" }}>{card.label}</div>
-            <div style={{ fontSize: "28px", fontWeight: 700, color: card.color, margin: "4px 0" }}>{card.value}</div>
+          <div key={card.label} className="col-6 col-md-4 col-lg flex-grow-1">
+            <div 
+              className="card h-100 shadow-sm border-0" 
+              style={{ backgroundColor: card.style.backgroundColor, cursor: "pointer" }}
+              onClick={() => setSelectedStatus(card.label === "Total" ? "all" : card.label)}
+            >
+              <div className="card-body">
+                <div className="text-uppercase fw-bold mb-1" style={{ fontSize: "0.7rem", color: card.style.color, letterSpacing: "0.5px" }}>{card.label}</div>
+                <div className="display-6 fw-bold m-0" style={{ color: card.style.color }}>{card.value}</div>
+              </div>
+            </div>
           </div>
         ))}
       </div>
 
       {/* FILTERS */}
-      <div style={{ background: c.card, borderRadius: "12px", padding: "16px 20px", border: `1px solid ${c.border}`, marginBottom: "24px", display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center" }}>
-        <div style={{ position: "relative", minWidth: "240px", flexGrow: 1 }}>
-          <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#9E9A90", fontSize: "14px" }}>🔍</span>
-          <input
-            type="text"
-            placeholder="Search by reservation ID, prosumer NIC, station or slot…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ ...inputStyle, paddingLeft: "34px" }}
-          />
+      <div className="card shadow-sm border-0 mb-4">
+        <div className="card-body">
+          <div className="row g-2 align-items-center">
+            <div className="col-12 col-md-5 col-lg-4 position-relative">
+              <span className="position-absolute top-50 translate-middle-y text-muted" style={{ left: "20px" }}>🔍</span>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="Search by reservation ID, prosumer NIC, station or slot…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{ paddingLeft: "35px" }}
+              />
+            </div>
+            <div className="col-12 col-md-4 col-lg-3">
+              <select className="form-select" value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)}>
+                <option value="all">All Statuses</option>
+                <option value="Pending">Pending</option>
+                <option value="Approved">Approved</option>
+                <option value="Completed">Completed</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+            </div>
+            {(searchQuery || selectedStatus !== "all") && (
+              <div className="col-12 col-md-3 col-lg-2">
+                <button type="button" className="btn btn-light w-100 fw-semibold" onClick={() => { setSearchQuery(""); setSelectedStatus("all"); }}>
+                  Clear Filters
+                </button>
+              </div>
+            )}
+            <div className="col-12 col-lg-3 ms-auto text-lg-end text-muted small fw-semibold">
+              {filtered.length} of {reservations.length} reservations
+            </div>
+          </div>
         </div>
-        <select value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)} style={{ ...inputStyle, width: "auto" }}>
-          <option value="all">All Statuses</option>
-          <option value="Pending">Pending</option>
-          <option value="Approved">Approved</option>
-          <option value="Completed">Completed</option>
-          <option value="Cancelled">Cancelled</option>
-        </select>
-        {(searchQuery || selectedStatus !== "all") && (
-          <button type="button" onClick={() => { setSearchQuery(""); setSelectedStatus("all"); }}
-            style={{ background: "#F0ECE1", border: "none", color: c.textMuted, padding: "9px 14px", borderRadius: "8px", fontSize: "13px", cursor: "pointer" }}>
-            Clear
-          </button>
-        )}
-        <span style={{ fontSize: "12px", color: c.textMuted, marginLeft: "auto" }}>
-          {filtered.length} of {reservations.length} reservations
-        </span>
       </div>
 
       {/* LOADING */}
       {loading && (
-        <div style={{ background: c.card, borderRadius: "12px", padding: "48px", textAlign: "center", border: `1px solid ${c.border}`, color: c.textMuted }}>
-          <div style={{ fontSize: "28px", marginBottom: "8px" }}>⏳</div>
-          <div style={{ fontSize: "16px", fontWeight: 600 }}>Loading Reservations…</div>
+        <div className="card shadow-sm border-0 text-center text-muted p-5">
+          <div className="fs-1 mb-2">⏳</div>
+          <div className="fw-bold">Loading Reservations…</div>
         </div>
       )}
 
       {/* EMPTY */}
       {!loading && filtered.length === 0 && (
-        <div style={{ background: c.card, borderRadius: "12px", padding: "48px 24px", textAlign: "center", border: `1px solid ${c.border}` }}>
-          <div style={{ fontSize: "36px", marginBottom: "12px" }}>📋</div>
-          <h3 style={{ fontSize: "18px", fontWeight: 700, color: c.textMain, margin: "0 0 6px 0" }}>
+        <div className="card shadow-sm border-0 text-center p-5">
+          <div className="fs-1 mb-3">📋</div>
+          <h3 className="h5 fw-bold" style={{ color: brand.dark }}>
             {reservations.length === 0 ? "No reservations yet" : "No reservations match the filter"}
           </h3>
-          <p style={{ color: c.textMuted, fontSize: "14px", margin: 0 }}>
+          <p className="text-muted mb-0">
             {reservations.length === 0
               ? "Prosumers have not made any reservations yet."
               : "Try adjusting your search or filter."}
@@ -200,44 +212,43 @@ function ReservationManagement() {
 
       {/* TABLE */}
       {!loading && filtered.length > 0 && (
-        <div style={{ background: c.card, borderRadius: "12px", border: `1px solid ${c.border}`, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px", textAlign: "left" }}>
-              <thead>
-                <tr style={{ background: "#F7F5F1", borderBottom: `1px solid ${c.border}`, color: c.textMuted, fontSize: "11px", textTransform: "uppercase", fontWeight: 700 }}>
-                  {["Reservation ID", "Prosumer NIC", "Station", "Slot", "Status", "Created", "Updated", "Transaction Ref"].map((h) => (
-                    <th key={h} style={{ padding: "13px 14px", whiteSpace: "nowrap" }}>{h}</th>
-                  ))}
+        <div className="card shadow-sm border-0 overflow-hidden">
+          <div className="table-responsive">
+            <table className="table table-hover align-middle mb-0">
+              <thead className="table-light text-muted text-uppercase" style={{ fontSize: "0.7rem", letterSpacing: "0.5px" }}>
+                <tr>
+                  <th className="py-3 px-4 text-nowrap">Reservation ID</th>
+                  <th className="py-3 px-4 text-nowrap">Prosumer NIC</th>
+                  <th className="py-3 px-4 text-nowrap">Station</th>
+                  <th className="py-3 px-4 text-nowrap">Slot</th>
+                  <th className="py-3 px-4 text-nowrap">Status</th>
+                  <th className="py-3 px-4 text-nowrap">Created</th>
+                  <th className="py-3 px-4 text-nowrap">Updated</th>
+                  <th className="py-3 px-4 text-nowrap">Transaction Ref</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="border-top-0">
                 {filtered.map((r, i) => {
-                  const ss = statusStyle(r.status);
                   return (
-                    <tr
-                      key={r.id || r.reservationId || i}
-                      style={{ borderBottom: i === filtered.length - 1 ? "none" : `1px solid #F0ECE1` }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "#FAF8F5")}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
-                    >
-                      <td style={{ padding: "14px" }}>
-                        <span style={{ background: "#EBE8E1", padding: "3px 7px", borderRadius: "5px", fontFamily: "monospace", fontSize: "11px", fontWeight: 700, color: c.primary }}>
+                    <tr key={r.id || r.reservationId || i}>
+                      <td className="px-4 py-3">
+                        <span className="badge bg-light text-dark font-monospace py-2 px-2 border" style={{ color: brand.dark }}>
                           {r.reservationId}
                         </span>
                       </td>
-                      <td style={{ padding: "14px", fontFamily: "monospace", fontSize: "12px", color: c.textMain }}>{r.prosumerNic}</td>
-                      <td style={{ padding: "14px", fontWeight: 600, color: c.primary }}>{r.stationId}</td>
-                      <td style={{ padding: "14px", fontFamily: "monospace", fontSize: "12px" }}>{r.slotId}</td>
-                      <td style={{ padding: "14px" }}>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "3px 9px", borderRadius: "10px", fontSize: "11px", fontWeight: 700, background: ss.bg, color: ss.color }}>
-                          <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: ss.color }} />
+                      <td className="px-4 py-3 font-monospace" style={{ fontSize: "0.85rem", color: "#1C1F1E" }}>{r.prosumerNic}</td>
+                      <td className="px-4 py-3 fw-bold" style={{ color: brand.dark }}>{r.stationId}</td>
+                      <td className="px-4 py-3 font-monospace text-muted" style={{ fontSize: "0.85rem" }}>{r.slotId}</td>
+                      <td className="px-4 py-3">
+                        <span className={`badge rounded-pill ${getStatusBadgeClass(r.status)} px-3 py-2 border border-opacity-25`}>
+                          <span className="d-inline-block rounded-circle me-2" style={{ width: "6px", height: "6px", backgroundColor: getStatusDotColor(r.status) }}></span>
                           {r.status}
                         </span>
                       </td>
-                      <td style={{ padding: "14px", fontSize: "11px", color: c.textMuted, whiteSpace: "nowrap" }}>{fmtDate(r.createdAt)}</td>
-                      <td style={{ padding: "14px", fontSize: "11px", color: c.textMuted, whiteSpace: "nowrap" }}>{fmtDate(r.updatedAt)}</td>
-                      <td style={{ padding: "14px", fontSize: "11px", color: c.textMuted, fontFamily: "monospace" }}>
-                        {r.transactionReference || <span style={{ color: "#CCCCCC" }}>—</span>}
+                      <td className="px-4 py-3 text-muted text-nowrap" style={{ fontSize: "0.8rem" }}>{fmtDate(r.createdAt)}</td>
+                      <td className="px-4 py-3 text-muted text-nowrap" style={{ fontSize: "0.8rem" }}>{fmtDate(r.updatedAt)}</td>
+                      <td className="px-4 py-3 text-muted font-monospace" style={{ fontSize: "0.8rem" }}>
+                        {r.transactionReference || <span className="text-secondary">—</span>}
                       </td>
                     </tr>
                   );
