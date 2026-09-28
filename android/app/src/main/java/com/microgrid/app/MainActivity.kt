@@ -242,12 +242,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                     loggedInFullName = ""
                                     loggedInNic = ""
-                                    startActivity(
-                                        Intent(this@MainActivity, LoginActivity::class.java).apply {
-                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                                        },
-                                    )
-                                    finish()
+                                    currentScreen = Screen.Login
                                 },
                                 onBackToHome = { currentScreen = Screen.Dashboard },
                             )
