@@ -1,3 +1,10 @@
+// =============================================================================
+// File: User.cs
+// Description: MongoDB document model for Backoffice and Grid Operator user
+//              accounts, stored in the "users" collection.
+// Author: Thumashi (Component 1)
+// =============================================================================
+
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 

@@ -1,3 +1,10 @@
+// =============================================================================
+// File: UsersController.cs
+// Description: Backoffice and Grid Operator user management API (create, list,
+//              update, delete, activate/deactivate). Used by the web admin app.
+// Author: Thumashi (Component 1)
+// =============================================================================
+
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
 using MicrogridApi.Data;
@@ -11,11 +18,13 @@ public class UsersController : ControllerBase
 {
     private readonly MongoDbContext _db;
 
+    // Creates the controller with the MongoDB context.
     public UsersController(MongoDbContext db)
     {
         _db = db;
     }
 
+    // GET: api/users - returns every Backoffice and Grid Operator user.
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
@@ -23,6 +32,7 @@ public class UsersController : ControllerBase
         return Ok(users);
     }
 
+    // POST: api/users - creates a new Backoffice or Grid Operator account.
     [HttpPost]
     public async Task<IActionResult> Create(User newUser)
     {
@@ -31,6 +41,8 @@ public class UsersController : ControllerBase
         return Ok(newUser);
     }
 
+    // PUT: api/users/{id} - updates a user's details.
+    // Keeps the old password hash when no new password is supplied.
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, User updatedUser)
     {
@@ -53,6 +65,7 @@ public class UsersController : ControllerBase
         return Ok(updatedUser);
     }
 
+    // DELETE: api/users/{id} - permanently removes a user.
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id)
     {
@@ -61,6 +74,7 @@ public class UsersController : ControllerBase
         return Ok(new { message = "User deleted." });
     }
 
+    // PATCH: api/users/{id}/deactivate - blocks the account from logging in.
     [HttpPatch("{id}/deactivate")]
     public async Task<IActionResult> Deactivate(string id)
     {
@@ -70,6 +84,7 @@ public class UsersController : ControllerBase
         return Ok(new { message = "User deactivated." });
     }
 
+    // PATCH: api/users/{id}/reactivate - restores a deactivated account.
     [HttpPatch("{id}/reactivate")]
     public async Task<IActionResult> Reactivate(string id)
     {
