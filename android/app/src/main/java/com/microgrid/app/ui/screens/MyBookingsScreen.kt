@@ -57,8 +57,10 @@ fun MyBookingsScreen(
     onUpdateReservation: (Reservation) -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     var reservations by remember { mutableStateOf<List<Reservation>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    var isOfflineMode by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var activeTab by remember { mutableStateOf("Upcoming") }
     var cancellingId by remember { mutableStateOf<String?>(null) }
@@ -71,13 +73,33 @@ fun MyBookingsScreen(
         scope.launch {
             isLoading = true
             error = ""
+            isOfflineMode = false
             try {
                 // Use the dedicated history endpoint — GET /api/reservations has no NIC filter
                 val response = RetrofitClient.instance.getReservationHistory(prosumerNic)
-                reservations = if (response.isSuccessful) response.body() ?: emptyList() else emptyList()
-                if (!response.isSuccessful) error = "Failed to load bookings (HTTP ${response.code()})"
+                if (response.isSuccessful) {
+                    val list = response.body() ?: emptyList()
+                    reservations = list
+                    // Cache in SQLite
+                    try {
+                        val dbHelper = com.microgrid.app.data.ReservationSQLiteHelper(context)
+                        list.forEach { dbHelper.insertOrUpdateReservation(it) }
+                    } catch (e: Exception) {
+                        android.util.Log.e("SQLite", "Failed to cache list", e)
+                    }
+                } else {
+                    error = "Failed to load bookings (HTTP ${response.code()})"
+                }
             } catch (ex: Exception) {
-                error = "Network error: ${ex.message}"
+                // Fallback to SQLite
+                isOfflineMode = true
+                try {
+                    val dbHelper = com.microgrid.app.data.ReservationSQLiteHelper(context)
+                    reservations = dbHelper.getReservationsByProsumer(prosumerNic)
+                    error = "Offline mode. Showing cached data."
+                } catch (e: Exception) {
+                    error = "Network error: ${ex.message}"
+                }
             } finally {
                 isLoading = false
             }
@@ -127,6 +149,15 @@ fun MyBookingsScreen(
                                 val r = RetrofitClient.instance.cancelReservation(resId)
                                 if (r.isSuccessful) {
                                     operationResult = "Reservation ${target.reservationId} cancelled."
+                                    
+                                    // Update SQLite
+                                    try {
+                                        val dbHelper = com.microgrid.app.data.ReservationSQLiteHelper(context)
+                                        dbHelper.updateReservationStatus(target.id, "Cancelled")
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("SQLite", "Failed to cancel locally", e)
+                                    }
+                                    
                                     loadReservations()
                                 } else {
                                     val bodyStr = r.errorBody()?.string() ?: ""

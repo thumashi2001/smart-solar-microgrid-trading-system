@@ -58,6 +58,7 @@ fun ReservationSummaryScreen(
     onBooked: (Reservation) -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     var isSubmitting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var createdReservation by remember { mutableStateOf<Reservation?>(null) }
@@ -263,7 +264,17 @@ fun ReservationSummaryScreen(
                                 )
                             )
                             if (response.isSuccessful && response.body() != null) {
-                                createdReservation = response.body()
+                                val res = response.body()!!
+                                createdReservation = res
+                                
+                                // CACHE IN LOCAL NATIVE SQLITE
+                                try {
+                                    val dbHelper = com.microgrid.app.data.ReservationSQLiteHelper(context)
+                                    dbHelper.insertOrUpdateReservation(res)
+                                } catch (ex: Exception) {
+                                    // Log, but don't fail the booking flow
+                                    android.util.Log.e("SQLite", "Failed to cache reservation locally", ex)
+                                }
                             } else {
                                 val bodyStr = response.errorBody()?.string() ?: ""
                                 error = when (response.code()) {
