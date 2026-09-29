@@ -108,6 +108,7 @@ private fun UpdateConfirmScreen(
     onUpdateComplete: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     var isSubmitting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var success by remember { mutableStateOf(false) }
@@ -232,6 +233,19 @@ private fun UpdateConfirmScreen(
                             )
                             if (r.isSuccessful) {
                                 success = true
+                                
+                                // UPDATE IN LOCAL NATIVE SQLITE
+                                try {
+                                    val dbHelper = com.microgrid.app.data.ReservationSQLiteHelper(context)
+                                    val updatedReservation = reservation.copy(
+                                        stationId = newStation.nodeId,
+                                        slotId = newSlot.slotId,
+                                        updatedAt = java.time.Instant.now().toString()
+                                    )
+                                    dbHelper.insertOrUpdateReservation(updatedReservation)
+                                } catch (ex: Exception) {
+                                    android.util.Log.e("SQLite", "Failed to update reservation locally", ex)
+                                }
                             } else {
                                 val bodyStr = r.errorBody()?.string() ?: ""
                                 error = when (r.code()) {
