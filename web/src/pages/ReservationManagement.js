@@ -200,18 +200,18 @@ function ReservationManagement() {
       {!loading && filtered.length > 0 && (
         <div className="card shadow-sm">
           <div className="table-responsive">
-            <table className="table table-hover align-middle mb-0">
+            <table className="table table-sm table-hover align-middle mb-0">
               <thead className="table-light">
                 <tr className="small text-uppercase text-secondary">
-                  <th className="px-3 py-3">Reservation ID</th>
-                  <th className="px-3 py-3">Prosumer NIC</th>
-                  <th className="px-3 py-3">Station</th>
-                  <th className="px-3 py-3">Slot</th>
-                  <th className="px-3 py-3">Status</th>
-                  <th className="px-3 py-3">Created</th>
-                  <th className="px-3 py-3">Updated</th>
-                  <th className="px-3 py-3">Transaction Ref</th>
-                  <th className="px-3 py-3 text-end">Actions</th>
+                  <th className="px-2 py-2">Reservation ID</th>
+                  <th className="px-2 py-2">Prosumer NIC</th>
+                  <th className="px-2 py-2">Station</th>
+                  <th className="px-2 py-2">Slot</th>
+                  <th className="px-2 py-2">Status</th>
+                  <th className="px-2 py-2">Created</th>
+                  <th className="px-2 py-2">Updated</th>
+                  <th className="px-2 py-2">Transaction Ref</th>
+                  <th className="px-2 py-2 text-end text-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -219,25 +219,29 @@ function ReservationManagement() {
                   const mongoId = r.id || r._id;
                   return (
                     <tr key={mongoId || r.reservationId}>
-                      <td className="px-3 py-3">
+                      <td className="px-2 py-2">
                         <span className="badge bg-light text-dark border font-monospace">
                           {r.reservationId}
                         </span>
                       </td>
-                      <td className="px-3 py-3 font-monospace small">{r.prosumerNic}</td>
-                      <td className="px-3 py-3 fw-semibold text-primary">{r.stationId}</td>
-                      <td className="px-3 py-3 font-monospace small">{r.slotId}</td>
-                      <td className="px-3 py-3">
+                      <td className="px-2 py-2 font-monospace small">{r.prosumerNic}</td>
+                      <td className="px-2 py-2 fw-semibold text-primary">{r.stationId}</td>
+                      <td className="px-2 py-2 font-monospace small">{r.slotId}</td>
+                      <td className="px-2 py-2">
                         <span className={`badge rounded-pill ${statusBadge(r.status)}`}>
                           {r.status}
                         </span>
                       </td>
-                      <td className="px-3 py-3 small text-secondary">{fmtDate(r.createdAt)}</td>
-                      <td className="px-3 py-3 small text-secondary">{fmtDate(r.updatedAt)}</td>
-                      <td className="px-3 py-3 small font-monospace text-secondary">
+                      <td className="px-2 py-2 small text-secondary">{fmtDate(r.createdAt)}</td>
+                      <td className="px-2 py-2 small text-secondary">{fmtDate(r.updatedAt)}</td>
+                      <td 
+                        className="px-2 py-2 small font-monospace text-secondary text-truncate" 
+                        style={{ maxWidth: "120px" }} 
+                        title={r.transactionReference}
+                      >
                         {r.transactionReference || "—"}
                       </td>
-                      <td className="px-3 py-3 text-end">
+                      <td className="px-2 py-2 text-end text-nowrap">
                         {r.status === "Pending" && (
                           <button
                             className="btn btn-sm btn-success fw-semibold"
