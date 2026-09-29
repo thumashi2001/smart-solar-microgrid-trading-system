@@ -9,7 +9,7 @@ function BackofficeDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Reservation values will be connected to Viman's API later.
+  // Reservation values will be connected to the reservation API later
   const [pendingReservations] = useState(0);
   const [approvedFutureReservations] = useState(0);
 
@@ -22,11 +22,11 @@ function BackofficeDashboard() {
       setLoading(true);
       setError("");
 
-      const nodeResponse = await api.get("/microgridnodes");
+      const response = await api.get("/microgridnodes");
 
       setNodes(
-        Array.isArray(nodeResponse.data)
-          ? nodeResponse.data
+        Array.isArray(response.data)
+          ? response.data
           : []
       );
     } catch (err) {
@@ -40,6 +40,10 @@ function BackofficeDashboard() {
       setLoading(false);
     }
   };
+
+  // =========================
+  // DASHBOARD CALCULATIONS
+  // =========================
 
   const totalNodes = nodes.length;
 
@@ -65,574 +69,672 @@ function BackofficeDashboard() {
     0
   );
 
-  const cardStyle = {
-    background: "#fff",
-    border: "1px solid #E3E0DA",
-    borderRadius: "12px",
-    padding: "22px",
-    minHeight: "105px",
-  };
-
-  const cardLabelStyle = {
-    color: "#6B6862",
-    fontSize: "12px",
-    fontWeight: 600,
-    textTransform: "uppercase",
-    marginBottom: "10px",
-  };
-
-  const cardValueStyle = {
-    fontSize: "28px",
-    fontWeight: 700,
-    color: "#111827",
-  };
-
-  const actionButtonStyle = {
-    border: "none",
-    background: "#177A4B",
-    color: "#fff",
-    padding: "10px 16px",
-    borderRadius: "8px",
-    cursor: "pointer",
-    fontWeight: 600,
-  };
+  // =========================
+  // LOADING
+  // =========================
 
   if (loading) {
     return (
-      <div style={{ padding: "40px" }}>
-        <h2>Loading Dashboard...</h2>
-        <p style={{ color: "#6B6862" }}>
-          Retrieving Smart Solar system information.
-        </p>
+      <div className="container-fluid py-5">
+        <div className="text-center py-5">
+          <div
+            className="spinner-border text-success mb-3"
+            role="status"
+          >
+            <span className="visually-hidden">
+              Loading...
+            </span>
+          </div>
+
+          <h4 className="fw-semibold">
+            Loading Dashboard...
+          </h4>
+
+          <p className="text-muted">
+            Retrieving Smart Solar system information.
+          </p>
+        </div>
       </div>
     );
   }
 
+  // =========================
+  // PAGE
+  // =========================
+
   return (
     <div
+      className="container-fluid px-4 px-lg-5 py-4"
       style={{
-        padding: "36px",
-        maxWidth: "1500px",
-        margin: "0 auto",
+        backgroundColor: "#f7f6f2",
+        minHeight: "100vh",
       }}
     >
-      {/* Page Header */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "28px",
-        }}
-      >
+      {/* =========================
+          HEADER
+      ========================= */}
+
+      <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
         <div>
-          <h1
-            style={{
-              margin: 0,
-              fontSize: "30px",
-              color: "#111827",
-            }}
+          <h2
+            className="fw-bold mb-1"
+            style={{ color: "#102033" }}
           >
             Backoffice Dashboard
-          </h1>
+          </h2>
 
-          <p
-            style={{
-              marginTop: "8px",
-              color: "#6B6862",
-            }}
-          >
-            Overview of the Smart Solar Microgrid
-            Trading System.
+          <p className="text-muted mb-0">
+            Overview of the Smart Solar Microgrid Trading
+            System.
           </p>
         </div>
 
         <button
           type="button"
+          className="btn btn-outline-secondary px-4 py-2"
           onClick={loadDashboardData}
-          style={{
-            background: "#fff",
-            border: "1px solid #D6D3CD",
-            padding: "10px 18px",
-            borderRadius: "8px",
-            cursor: "pointer",
-            fontWeight: 600,
-          }}
         >
-          ↻ Refresh
+          <i className="bi bi-arrow-clockwise me-2"></i>
+          Refresh
         </button>
       </div>
 
-      {/* Error */}
+      {/* =========================
+          ERROR MESSAGE
+      ========================= */}
+
       {error && (
         <div
-          style={{
-            background: "#FDECEC",
-            border: "1px solid #F5B7B1",
-            color: "#B42318",
-            padding: "14px 18px",
-            borderRadius: "8px",
-            marginBottom: "22px",
-          }}
+          className="alert alert-danger alert-dismissible fade show"
+          role="alert"
         >
+          <i className="bi bi-exclamation-triangle-fill me-2"></i>
+
           {error}
+
+          <button
+            type="button"
+            className="btn-close"
+            onClick={() => setError("")}
+          ></button>
         </div>
       )}
 
-      {/* Main Statistics */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns:
-            "repeat(auto-fit, minmax(210px, 1fr))",
-          gap: "16px",
-          marginBottom: "28px",
-        }}
-      >
-        <div style={cardStyle}>
-          <div style={cardLabelStyle}>
-            Total Nodes
-          </div>
+      {/* =========================
+          TOP STATISTIC CARDS
+      ========================= */}
 
-          <div style={cardValueStyle}>
-            {totalNodes}
-          </div>
+      <div className="row g-3 mb-4">
 
+        {/* TOTAL NODES */}
+        <div className="col-12 col-md-6 col-xl">
           <div
+            className="card border-0 h-100"
             style={{
-              color: "#6B6862",
-              fontSize: "13px",
-              marginTop: "5px",
+              backgroundColor: "#cfe2ff",
+              borderRadius: "10px",
             }}
           >
-            Registered microgrid nodes
-          </div>
-        </div>
+            <div className="card-body p-4">
+              <div className="d-flex align-items-center">
 
-        <div style={cardStyle}>
-          <div style={cardLabelStyle}>
-            Active Nodes
-          </div>
-
-          <div
-            style={{
-              ...cardValueStyle,
-              color: "#177A4B",
-            }}
-          >
-            {activeNodes}
-          </div>
-
-          <div
-            style={{
-              color: "#6B6862",
-              fontSize: "13px",
-              marginTop: "5px",
-            }}
-          >
-            Currently operational
-          </div>
-        </div>
-
-        <div style={cardStyle}>
-          <div style={cardLabelStyle}>
-            Inactive Nodes
-          </div>
-
-          <div style={cardValueStyle}>
-            {inactiveNodes}
-          </div>
-
-          <div
-            style={{
-              color: "#6B6862",
-              fontSize: "13px",
-              marginTop: "5px",
-            }}
-          >
-            Currently unavailable
-          </div>
-        </div>
-
-        <div style={cardStyle}>
-          <div style={cardLabelStyle}>
-            Pending Reservations
-          </div>
-
-          <div
-            style={{
-              ...cardValueStyle,
-              color: "#B7791F",
-            }}
-          >
-            {pendingReservations}
-          </div>
-
-          <div
-            style={{
-              color: "#6B6862",
-              fontSize: "13px",
-              marginTop: "5px",
-            }}
-          >
-            Waiting for processing
-          </div>
-        </div>
-
-        <div style={cardStyle}>
-          <div style={cardLabelStyle}>
-            Approved Future Reservations
-          </div>
-
-          <div
-            style={{
-              ...cardValueStyle,
-              color: "#177A4B",
-            }}
-          >
-            {approvedFutureReservations}
-          </div>
-
-          <div
-            style={{
-              color: "#6B6862",
-              fontSize: "13px",
-              marginTop: "5px",
-            }}
-          >
-            Upcoming approved bookings
-          </div>
-        </div>
-      </div>
-
-      {/* Capacity Overview */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns:
-            "repeat(auto-fit, minmax(280px, 1fr))",
-          gap: "16px",
-          marginBottom: "28px",
-        }}
-      >
-        <div style={cardStyle}>
-          <div style={cardLabelStyle}>
-            Total Energy Capacity
-          </div>
-
-          <div
-            style={{
-              fontSize: "26px",
-              fontWeight: 700,
-              color: "#177A4B",
-            }}
-          >
-            {totalCapacity.toLocaleString()} kWh
-          </div>
-
-          <p
-            style={{
-              color: "#6B6862",
-              fontSize: "13px",
-              marginBottom: 0,
-            }}
-          >
-            Combined capacity of all registered
-            microgrid nodes.
-          </p>
-        </div>
-
-        <div style={cardStyle}>
-          <div style={cardLabelStyle}>
-            Total Battery Slots
-          </div>
-
-          <div
-            style={{
-              fontSize: "26px",
-              fontWeight: 700,
-              color: "#177A4B",
-            }}
-          >
-            {totalBatterySlots}
-          </div>
-
-          <p
-            style={{
-              color: "#6B6862",
-              fontSize: "13px",
-              marginBottom: 0,
-            }}
-          >
-            Combined battery storage slots across
-            all nodes.
-          </p>
-        </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div
-        style={{
-          background: "#fff",
-          border: "1px solid #E3E0DA",
-          borderRadius: "12px",
-          padding: "22px",
-          marginBottom: "28px",
-        }}
-      >
-        <h2
-          style={{
-            marginTop: 0,
-            marginBottom: "6px",
-            fontSize: "19px",
-          }}
-        >
-          Quick Actions
-        </h2>
-
-        <p
-          style={{
-            color: "#6B6862",
-            marginTop: 0,
-            marginBottom: "18px",
-            fontSize: "14px",
-          }}
-        >
-          Common Backoffice management operations.
-        </p>
-
-        <div
-          style={{
-            display: "flex",
-            gap: "12px",
-            flexWrap: "wrap",
-          }}
-        >
-          <button
-            type="button"
-            onClick={() =>
-              navigate("/microgrid-nodes")
-            }
-            style={actionButtonStyle}
-          >
-            Manage Microgrid Nodes
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              navigate("/microgrid-nodes/add")
-            }
-            style={actionButtonStyle}
-          >
-            + Add Microgrid Node
-          </button>
-
-          <button
-            type="button"
-            onClick={() => navigate("/users")}
-            style={actionButtonStyle}
-          >
-            Manage Users
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              navigate("/prosumers")
-            }
-            style={actionButtonStyle}
-          >
-            Manage Prosumers
-          </button>
-        </div>
-      </div>
-
-      {/* Microgrid Node Overview */}
-      <div
-        style={{
-          background: "#fff",
-          border: "1px solid #E3E0DA",
-          borderRadius: "12px",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            padding: "22px",
-            borderBottom: "1px solid #E3E0DA",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <div>
-            <h2
-              style={{
-                margin: 0,
-                fontSize: "19px",
-              }}
-            >
-              Microgrid Node Overview
-            </h2>
-
-            <p
-              style={{
-                margin: "6px 0 0",
-                color: "#6B6862",
-                fontSize: "13px",
-              }}
-            >
-              Current status of registered solar
-              microgrid nodes.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={() =>
-              navigate("/microgrid-nodes")
-            }
-            style={{
-              background: "#fff",
-              border: "1px solid #D6D3CD",
-              padding: "9px 14px",
-              borderRadius: "7px",
-              cursor: "pointer",
-              fontWeight: 600,
-            }}
-          >
-            View All
-          </button>
-        </div>
-
-        {nodes.length === 0 ? (
-          <div
-            style={{
-              padding: "35px",
-              textAlign: "center",
-              color: "#6B6862",
-            }}
-          >
-            No microgrid nodes are currently
-            registered.
-          </div>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-              }}
-            >
-              <thead>
-                <tr
+                <div
+                  className="d-flex justify-content-center align-items-center me-3"
                   style={{
-                    background: "#F7F5F1",
-                    textAlign: "left",
+                    width: "50px",
+                    height: "50px",
+                    borderRadius: "10px",
+                    backgroundColor: "rgba(255,255,255,0.55)",
                   }}
                 >
-                  {[
-                    "Node ID",
-                    "Node Name",
-                    "Location",
-                    "Capacity",
-                    "Battery Slots",
-                    "Status",
-                    "Action",
-                  ].map((heading) => (
-                    <th
-                      key={heading}
-                      style={{
-                        padding: "14px 16px",
-                        fontSize: "12px",
-                        color: "#5F5B55",
-                        textTransform: "uppercase",
-                        borderBottom:
-                          "1px solid #E3E0DA",
-                      }}
-                    >
-                      {heading}
-                    </th>
-                  ))}
+                  <i
+                    className="bi bi-diagram-3 fs-4"
+                    style={{ color: "#0d3b66" }}
+                  ></i>
+                </div>
+
+                <div>
+                  <h2
+                    className="fw-bold mb-0"
+                    style={{ color: "#102033" }}
+                  >
+                    {totalNodes}
+                  </h2>
+
+                  <p className="text-muted mb-0">
+                    Total Nodes
+                  </p>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ACTIVE NODES */}
+        <div className="col-12 col-md-6 col-xl">
+          <div
+            className="card border-0 h-100"
+            style={{
+              backgroundColor: "#d1e7dd",
+              borderRadius: "10px",
+            }}
+          >
+            <div className="card-body p-4">
+              <div className="d-flex align-items-center">
+
+                <div
+                  className="d-flex justify-content-center align-items-center me-3"
+                  style={{
+                    width: "50px",
+                    height: "50px",
+                    borderRadius: "10px",
+                    backgroundColor: "rgba(255,255,255,0.55)",
+                  }}
+                >
+                  <i
+                    className="bi bi-check-circle fs-4"
+                    style={{ color: "#087f5b" }}
+                  ></i>
+                </div>
+
+                <div>
+                  <h2
+                    className="fw-bold mb-0"
+                    style={{ color: "#087f5b" }}
+                  >
+                    {activeNodes}
+                  </h2>
+
+                  <p className="text-muted mb-0">
+                    Active Nodes
+                  </p>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* INACTIVE NODES */}
+        <div className="col-12 col-md-6 col-xl">
+          <div
+            className="card border-0 h-100"
+            style={{
+              backgroundColor: "#f8d7da",
+              borderRadius: "10px",
+            }}
+          >
+            <div className="card-body p-4">
+              <div className="d-flex align-items-center">
+
+                <div
+                  className="d-flex justify-content-center align-items-center me-3"
+                  style={{
+                    width: "50px",
+                    height: "50px",
+                    borderRadius: "10px",
+                    backgroundColor: "rgba(255,255,255,0.55)",
+                  }}
+                >
+                  <i
+                    className="bi bi-slash-circle fs-4"
+                    style={{ color: "#b02a37" }}
+                  ></i>
+                </div>
+
+                <div>
+                  <h2
+                    className="fw-bold mb-0"
+                    style={{ color: "#b02a37" }}
+                  >
+                    {inactiveNodes}
+                  </h2>
+
+                  <p className="text-muted mb-0">
+                    Inactive Nodes
+                  </p>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* PENDING RESERVATIONS */}
+        <div className="col-12 col-md-6 col-xl">
+          <div
+            className="card border-0 h-100"
+            style={{
+              backgroundColor: "#fff3cd",
+              borderRadius: "10px",
+            }}
+          >
+            <div className="card-body p-4">
+              <div className="d-flex align-items-center">
+
+                <div
+                  className="d-flex justify-content-center align-items-center me-3"
+                  style={{
+                    width: "50px",
+                    height: "50px",
+                    borderRadius: "10px",
+                    backgroundColor: "rgba(255,255,255,0.55)",
+                  }}
+                >
+                  <i
+                    className="bi bi-clock fs-4"
+                    style={{ color: "#997404" }}
+                  ></i>
+                </div>
+
+                <div>
+                  <h2
+                    className="fw-bold mb-0"
+                    style={{ color: "#997404" }}
+                  >
+                    {pendingReservations}
+                  </h2>
+
+                  <p className="text-muted mb-0">
+                    Pending Reservations
+                  </p>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* APPROVED RESERVATIONS */}
+        <div className="col-12 col-md-6 col-xl">
+          <div
+            className="card border-0 h-100"
+            style={{
+              backgroundColor: "#cff4fc",
+              borderRadius: "10px",
+            }}
+          >
+            <div className="card-body p-4">
+              <div className="d-flex align-items-center">
+
+                <div
+                  className="d-flex justify-content-center align-items-center me-3"
+                  style={{
+                    width: "50px",
+                    height: "50px",
+                    borderRadius: "10px",
+                    backgroundColor: "rgba(255,255,255,0.55)",
+                  }}
+                >
+                  <i
+                    className="bi bi-calendar-check fs-4"
+                    style={{ color: "#087990" }}
+                  ></i>
+                </div>
+
+                <div>
+                  <h2
+                    className="fw-bold mb-0"
+                    style={{ color: "#087990" }}
+                  >
+                    {approvedFutureReservations}
+                  </h2>
+
+                  <p className="text-muted mb-0">
+                    Approved Reservations
+                  </p>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {/* =========================
+          ENERGY INFORMATION
+      ========================= */}
+
+      <div className="row g-3 mb-4">
+
+        {/* ENERGY CAPACITY */}
+        <div className="col-12 col-lg-6">
+          <div
+            className="card border shadow-sm h-100"
+            style={{ borderRadius: "10px" }}
+          >
+            <div className="card-body p-4">
+              <div className="d-flex align-items-center">
+
+                <div
+                  className="d-flex align-items-center justify-content-center me-4"
+                  style={{
+                    width: "64px",
+                    height: "64px",
+                    borderRadius: "12px",
+                    backgroundColor: "#e5f5ec",
+                  }}
+                >
+                  <i
+                    className="bi bi-lightning-charge-fill fs-2"
+                    style={{ color: "#198754" }}
+                  ></i>
+                </div>
+
+                <div>
+                  <p className="text-muted small text-uppercase fw-semibold mb-1">
+                    Total Energy Capacity
+                  </p>
+
+                  <h2
+                    className="fw-bold mb-1"
+                    style={{ color: "#087f5b" }}
+                  >
+                    {totalCapacity.toLocaleString()} kWh
+                  </h2>
+
+                  <small className="text-muted">
+                    Combined capacity of all registered
+                    microgrid nodes.
+                  </small>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* BATTERY SLOTS */}
+        <div className="col-12 col-lg-6">
+          <div
+            className="card border shadow-sm h-100"
+            style={{ borderRadius: "10px" }}
+          >
+            <div className="card-body p-4">
+              <div className="d-flex align-items-center">
+
+                <div
+                  className="d-flex align-items-center justify-content-center me-4"
+                  style={{
+                    width: "64px",
+                    height: "64px",
+                    borderRadius: "12px",
+                    backgroundColor: "#e5f5ec",
+                  }}
+                >
+                  <i
+                    className="bi bi-battery-charging fs-2"
+                    style={{ color: "#198754" }}
+                  ></i>
+                </div>
+
+                <div>
+                  <p className="text-muted small text-uppercase fw-semibold mb-1">
+                    Total Battery Slots
+                  </p>
+
+                  <h2
+                    className="fw-bold mb-1"
+                    style={{ color: "#087f5b" }}
+                  >
+                    {totalBatterySlots}
+                  </h2>
+
+                  <small className="text-muted">
+                    Combined battery storage slots across all
+                    nodes.
+                  </small>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {/* =========================
+          QUICK ACTIONS
+      ========================= */}
+
+      <div
+        className="card border shadow-sm mb-4"
+        style={{ borderRadius: "10px" }}
+      >
+        <div className="card-body p-4">
+
+          <div className="d-flex align-items-center mb-2">
+            <i
+              className="bi bi-lightning-charge-fill me-2"
+              style={{ color: "#198754" }}
+            ></i>
+
+            <h5 className="fw-bold mb-0">
+              Quick Actions
+            </h5>
+          </div>
+
+          <p className="text-muted small mb-3">
+            Common Backoffice management operations.
+          </p>
+
+          <div className="d-flex flex-wrap gap-2">
+
+            <button
+              type="button"
+              className="btn btn-success px-3"
+              onClick={() =>
+                navigate("/microgrid-nodes")
+              }
+            >
+              <i className="bi bi-diagram-3 me-2"></i>
+              Manage Microgrid Nodes
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-success px-3"
+              onClick={() =>
+                navigate("/microgrid-nodes/add")
+              }
+            >
+              <i className="bi bi-plus-lg me-2"></i>
+              Add Microgrid Node
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-success px-3"
+              onClick={() => navigate("/users")}
+            >
+              <i className="bi bi-people me-2"></i>
+              Manage Users
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-success px-3"
+              onClick={() => navigate("/prosumers")}
+            >
+              <i className="bi bi-person-check me-2"></i>
+              Manage Prosumers
+            </button>
+
+          </div>
+        </div>
+      </div>
+
+      {/* =========================
+          MICROGRID NODE OVERVIEW
+      ========================= */}
+
+      <div
+        className="card border shadow-sm"
+        style={{ borderRadius: "10px" }}
+      >
+
+        {/* TABLE HEADER */}
+        <div className="card-header bg-white p-4">
+          <div className="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3">
+
+            <div>
+              <div className="d-flex align-items-center mb-1">
+                <i
+                  className="bi bi-diagram-3 me-2"
+                  style={{ color: "#198754" }}
+                ></i>
+
+                <h5 className="fw-bold mb-0">
+                  Microgrid Node Overview
+                </h5>
+              </div>
+
+              <p className="text-muted small mb-0">
+                Current status of registered solar microgrid
+                nodes.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-outline-success px-4"
+              onClick={() =>
+                navigate("/microgrid-nodes")
+              }
+            >
+              View All
+            </button>
+
+          </div>
+        </div>
+
+        {/* NO DATA */}
+        {nodes.length === 0 ? (
+          <div className="text-center py-5">
+
+            <i
+              className="bi bi-inbox fs-1"
+              style={{ color: "#198754" }}
+            ></i>
+
+            <h6 className="fw-semibold mt-3">
+              No Microgrid Nodes
+            </h6>
+
+            <p className="text-muted mb-3">
+              No microgrid nodes are currently registered.
+            </p>
+
+            <button
+              type="button"
+              className="btn btn-success"
+              onClick={() =>
+                navigate("/microgrid-nodes/add")
+              }
+            >
+              <i className="bi bi-plus-lg me-2"></i>
+              Add Microgrid Node
+            </button>
+
+          </div>
+        ) : (
+          <div className="table-responsive">
+
+            <table className="table table-hover align-middle mb-0">
+
+              <thead className="table-light">
+                <tr>
+                  <th className="px-4 py-3">
+                    NODE ID
+                  </th>
+
+                  <th className="py-3">
+                    NODE NAME
+                  </th>
+
+                  <th className="py-3">
+                    LOCATION
+                  </th>
+
+                  <th className="py-3">
+                    CAPACITY
+                  </th>
+
+                  <th className="py-3">
+                    BATTERY SLOTS
+                  </th>
+
+                  <th className="py-3">
+                    STATUS
+                  </th>
+
+                  <th className="py-3">
+                    ACTION
+                  </th>
                 </tr>
               </thead>
 
               <tbody>
+
                 {nodes.slice(0, 5).map((node) => {
+
                   const active =
                     node.status?.toLowerCase() ===
                     "active";
 
                   return (
-                    <tr
-                      key={node.id}
-                      style={{
-                        borderBottom:
-                          "1px solid #EEEAE4",
-                      }}
-                    >
-                      <td
-                        style={{
-                          padding: "15px 16px",
-                          fontWeight: 600,
-                        }}
-                      >
+                    <tr key={node.id}>
+
+                      {/* NODE ID */}
+                      <td className="px-4 fw-semibold">
                         {node.nodeId || "-"}
                       </td>
 
-                      <td
-                        style={{
-                          padding: "15px 16px",
-                        }}
-                      >
+                      {/* NAME */}
+                      <td className="fw-medium">
                         {node.nodeName || "-"}
                       </td>
 
-                      <td
-                        style={{
-                          padding: "15px 16px",
-                        }}
-                      >
+                      {/* LOCATION */}
+                      <td>
+                        <i
+                          className="bi bi-geo-alt me-2"
+                          style={{ color: "#198754" }}
+                        ></i>
+
                         {node.location || "-"}
                       </td>
 
-                      <td
-                        style={{
-                          padding: "15px 16px",
-                        }}
-                      >
+                      {/* CAPACITY */}
+                      <td>
+                        <i
+                          className="bi bi-lightning-charge me-1"
+                          style={{ color: "#198754" }}
+                        ></i>
+
                         {node.capacityKWh || 0} kWh
                       </td>
 
-                      <td
-                        style={{
-                          padding: "15px 16px",
-                        }}
-                      >
+                      {/* BATTERY */}
+                      <td>
+                        <i
+                          className="bi bi-battery-half me-2"
+                          style={{ color: "#198754" }}
+                        ></i>
+
                         {node.batterySlots || 0}
                       </td>
 
-                      <td
-                        style={{
-                          padding: "15px 16px",
-                        }}
-                      >
+                      {/* STATUS */}
+                      <td>
                         <span
-                          style={{
-                            display:
-                              "inline-block",
-                            padding: "5px 10px",
-                            borderRadius: "20px",
-                            background: active
-                              ? "#E5F5EC"
-                              : "#EFEFEF",
-                            color: active
-                              ? "#177A4B"
-                              : "#5F5B55",
-                            fontSize: "12px",
-                            fontWeight: 600,
-                          }}
+                          className={
+                            active
+                              ? "badge rounded-pill bg-success px-3 py-2"
+                              : "badge rounded-pill bg-secondary px-3 py-2"
+                          }
                         >
                           {active
                             ? "Active"
@@ -640,37 +742,32 @@ function BackofficeDashboard() {
                         </span>
                       </td>
 
-                      <td
-                        style={{
-                          padding: "15px 16px",
-                        }}
-                      >
+                      {/* ACTION */}
+                      <td>
                         <button
                           type="button"
+                          className="btn btn-sm btn-outline-success"
                           onClick={() =>
                             navigate(
                               `/microgrid-nodes/${node.id}`
                             )
                           }
-                          style={{
-                            background: "#fff",
-                            border:
-                              "1px solid #D6D3CD",
-                            padding: "7px 12px",
-                            borderRadius: "6px",
-                            cursor: "pointer",
-                          }}
                         >
+                          <i className="bi bi-eye me-1"></i>
                           View
                         </button>
                       </td>
+
                     </tr>
                   );
                 })}
+
               </tbody>
             </table>
+
           </div>
         )}
+
       </div>
     </div>
   );

@@ -1,9 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
 import { useNavigate } from "react-router-dom";
 import api from "../api";
 
 function MicrogridNodes() {
   const navigate = useNavigate();
+
+  // =========================================================
+  // STATE
+  // =========================================================
 
   const [nodes, setNodes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -101,7 +111,7 @@ function MicrogridNodes() {
   };
 
   // =========================================================
-  // LOAD NODES
+  // LOAD MICROGRID NODES
   // =========================================================
 
   const loadNodes = useCallback(async () => {
@@ -199,7 +209,7 @@ function MicrogridNodes() {
   ).length;
 
   // =========================================================
-  // OPEN DEACTIVATE CONFIRMATION
+  // OPEN DEACTIVATE MODAL
   // =========================================================
 
   const openDeactivateModal = (node) => {
@@ -209,7 +219,7 @@ function MicrogridNodes() {
   };
 
   // =========================================================
-  // CLOSE DEACTIVATE CONFIRMATION
+  // CLOSE DEACTIVATE MODAL
   // =========================================================
 
   const closeDeactivateModal = () => {
@@ -382,792 +392,783 @@ function MicrogridNodes() {
   // =========================================================
 
   return (
-    <div style={styles.page}>
-      {/* =================================================== */}
-      {/* HEADER */}
-      {/* =================================================== */}
+    <div
+      className="container-fluid py-4 px-4"
+      style={{
+        backgroundColor: "#f7f5f1",
+        minHeight: "calc(100vh - 70px)",
+      }}
+    >
+      {/* =====================================================
+          PAGE HEADER
+      ====================================================== */}
 
-      <div style={styles.header}>
+      <div className="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
         <div>
-          <h1 style={styles.title}>
-            Microgrid Nodes
-          </h1>
+          <h2 className="fw-bold mb-1">
+            Microgrid Node Management
+          </h2>
 
-          <p style={styles.subtitle}>
-            Manage solar microgrid nodes,
-            capacity, battery slots and
-            operating schedules.
+          <p className="text-secondary mb-0">
+            Manage solar microgrid nodes, capacity,
+            battery slots and operating schedules.
           </p>
         </div>
 
         <button
           type="button"
+          className="btn btn-success d-flex align-items-center gap-2"
           onClick={() =>
             navigate("/microgrid-nodes/add")
           }
-          style={styles.addButton}
         >
-          + Add Microgrid Node
+          <i className="bi bi-plus-lg"></i>
+          Add Microgrid Node
         </button>
       </div>
 
-      {/* =================================================== */}
-      {/* SUCCESS MESSAGE */}
-      {/* =================================================== */}
+      {/* =====================================================
+          SUCCESS MESSAGE
+      ====================================================== */}
 
       {successMessage && (
-        <div style={styles.successBox}>
-          <strong>Success</strong>
+        <div
+          className="alert alert-success alert-dismissible fade show"
+          role="alert"
+        >
+          <i className="bi bi-check-circle-fill me-2"></i>
 
-          <div style={{ marginTop: "4px" }}>
-            {successMessage}
-          </div>
+          <strong>Success!</strong>{" "}
+          {successMessage}
+
+          <button
+            type="button"
+            className="btn-close"
+            onClick={() =>
+              setSuccessMessage("")
+            }
+            aria-label="Close"
+          ></button>
         </div>
       )}
 
-      {/* =================================================== */}
-      {/* ERROR MESSAGE */}
-      {/* =================================================== */}
+      {/* =====================================================
+          ERROR MESSAGE
+      ====================================================== */}
 
       {error && (
-        <div style={styles.errorBox}>
-          <strong>Error</strong>
+        <div
+          className="alert alert-danger alert-dismissible fade show"
+          role="alert"
+        >
+          <i className="bi bi-exclamation-triangle-fill me-2"></i>
 
-          <div style={{ marginTop: "4px" }}>
-            {error}
-          </div>
+          <strong>Error!</strong>{" "}
+          {error}
+
+          <button
+            type="button"
+            className="btn-close"
+            onClick={() => setError("")}
+            aria-label="Close"
+          ></button>
         </div>
       )}
 
-      {/* =================================================== */}
-      {/* SUMMARY CARDS */}
-      {/* =================================================== */}
+      {/* =====================================================
+          SUMMARY CARDS
+      ====================================================== */}
 
-      <div style={styles.summaryGrid}>
-        <div style={styles.summaryCard}>
-          <div style={styles.summaryLabel}>
-            TOTAL NODES
-          </div>
+      <div className="row g-3 mb-4">
+        {/* Total Nodes */}
 
-          <div style={styles.summaryValue}>
-            {totalNodes}
-          </div>
-        </div>
-
-        <div style={styles.summaryCard}>
-          <div style={styles.summaryLabel}>
-            ACTIVE NODES
-          </div>
-
-          <div style={styles.summaryValueGreen}>
-            {activeNodes}
-          </div>
-        </div>
-
-        <div style={styles.summaryCard}>
-          <div style={styles.summaryLabel}>
-            INACTIVE NODES
-          </div>
-
-          <div style={styles.summaryValue}>
-            {inactiveNodes}
-          </div>
-        </div>
-      </div>
-
-      {/* =================================================== */}
-      {/* SEARCH AND FILTER */}
-      {/* =================================================== */}
-
-      <div style={styles.toolbar}>
-        <input
-          type="text"
-          value={searchText}
-          onChange={(event) =>
-            setSearchText(event.target.value)
-          }
-          placeholder="Search by node ID, name or location..."
-          style={styles.searchInput}
-        />
-
-        <select
-          value={statusFilter}
-          onChange={(event) =>
-            setStatusFilter(event.target.value)
-          }
-          style={styles.filterSelect}
-        >
-          <option value="all">
-            All Status
-          </option>
-
-          <option value="active">
-            Active
-          </option>
-
-          <option value="inactive">
-            Inactive
-          </option>
-        </select>
-
-        <button
-          type="button"
-          onClick={loadNodes}
-          style={styles.refreshButton}
-        >
-          Refresh
-        </button>
-      </div>
-
-      {/* =================================================== */}
-      {/* TABLE */}
-      {/* =================================================== */}
-
-      <div style={styles.tableCard}>
-        {loading ? (
-          <div style={styles.emptyState}>
-            Loading microgrid nodes...
-          </div>
-        ) : filteredNodes.length === 0 ? (
-          <div style={styles.emptyState}>
-            No microgrid nodes found.
-          </div>
-        ) : (
-          <div style={styles.tableWrapper}>
-            <table style={styles.table}>
-              <thead>
-                <tr>
-                  <th style={styles.th}>
-                    NODE ID
-                  </th>
-
-                  <th style={styles.th}>
-                    NODE NAME
-                  </th>
-
-                  <th style={styles.th}>
-                    LOCATION
-                  </th>
-
-                  <th style={styles.th}>
-                    CAPACITY
-                  </th>
-
-                  <th style={styles.th}>
-                    BATTERY SLOTS
-                  </th>
-
-                  <th style={styles.th}>
-                    SCHEDULE
-                  </th>
-
-                  <th style={styles.th}>
-                    STATUS
-                  </th>
-
-                  <th style={styles.th}>
-                    ACTIONS
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {filteredNodes.map(
-                  (node, index) => {
-                    const mongoId =
-                      getMongoId(node);
-
-                    const status =
-                      getStatus(node);
-
-                    const isActive =
-                      status === "active";
-
-                    const isReactivating =
-                      reactivatingId ===
-                      mongoId;
-
-                    return (
-                      <tr
-                        key={
-                          mongoId ||
-                          getNodeId(node) ||
-                          index
-                        }
-                      >
-                        <td style={styles.td}>
-                          <strong>
-                            {getNodeId(node)}
-                          </strong>
-                        </td>
-
-                        <td style={styles.td}>
-                          {getNodeName(node)}
-                        </td>
-
-                        <td style={styles.td}>
-                          {getLocation(node)}
-                        </td>
-
-                        <td style={styles.td}>
-                          {getCapacity(node)} kWh
-                        </td>
-
-                        <td style={styles.td}>
-                          {getBatterySlots(node)}
-                        </td>
-
-                        <td style={styles.td}>
-                          {getSchedule(node)}
-                        </td>
-
-                        <td style={styles.td}>
-                          <span
-                            style={
-                              isActive
-                                ? styles.activeBadge
-                                : styles.inactiveBadge
-                            }
-                          >
-                            {isActive
-                              ? "Active"
-                              : "Inactive"}
-                          </span>
-                        </td>
-
-                        <td style={styles.td}>
-                          <div
-                            style={
-                              styles.actionGroup
-                            }
-                          >
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleView(node)
-                              }
-                              style={
-                                styles.viewButton
-                              }
-                            >
-                              View
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleEdit(node)
-                              }
-                              style={
-                                styles.editButton
-                              }
-                            >
-                              Edit
-                            </button>
-
-                            {isActive ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  openDeactivateModal(
-                                    node
-                                  )
-                                }
-                                style={
-                                  styles.deactivateButton
-                                }
-                              >
-                                Deactivate
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                disabled={
-                                  isReactivating
-                                }
-                                onClick={() =>
-                                  handleReactivate(
-                                    node
-                                  )
-                                }
-                                style={{
-                                  ...styles.reactivateButton,
-                                  opacity:
-                                    isReactivating
-                                      ? 0.6
-                                      : 1,
-                                }}
-                              >
-                                {isReactivating
-                                  ? "Reactivating..."
-                                  : "Reactivate"}
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  }
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* =================================================== */}
-      {/* DEACTIVATE CONFIRMATION MODAL */}
-      {/* =================================================== */}
-
-      {nodeToDeactivate && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modal}>
-            {/* Warning icon */}
-            <div style={styles.warningIcon}>
-              !
-            </div>
-
-            <h2 style={styles.modalTitle}>
-              Deactivate Microgrid Node?
-            </h2>
-
-            <p style={styles.modalText}>
-              You are about to deactivate{" "}
-              <strong>
-                {getNodeName(
-                  nodeToDeactivate
-                )}
-              </strong>
-              .
-            </p>
-
-            <p style={styles.modalText}>
-              This node will no longer be
-              available for new energy
-              reservations.
-            </p>
-
-            {/* Assignment business-rule information */}
-            <div style={styles.warningBox}>
-              <strong>
-                Important:
-              </strong>{" "}
-              A microgrid node cannot be
-              deactivated when active energy
-              reservations exist.
-            </div>
-
-            {/* API error */}
-            {deactivateError && (
-              <div style={styles.modalError}>
-                <strong>
-                  Unable to deactivate node
-                </strong>
-
-                <div
-                  style={{
-                    marginTop: "5px",
-                  }}
-                >
-                  {deactivateError}
-                </div>
-              </div>
-            )}
-
-            <div style={styles.modalActions}>
-              <button
-                type="button"
-                onClick={
-                  closeDeactivateModal
-                }
-                disabled={deactivating}
-                style={styles.cancelButton}
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                onClick={
-                  confirmDeactivate
-                }
-                disabled={deactivating}
+        <div className="col-12 col-md-4">
+          <div
+            className="card border-0 h-100"
+            style={{
+              backgroundColor: "#cfe2ff",
+            }}
+          >
+            <div className="card-body d-flex align-items-center gap-3 py-4">
+              <div
+                className="d-flex align-items-center justify-content-center"
                 style={{
-                  ...styles.confirmDeactivateButton,
-                  opacity: deactivating
-                    ? 0.65
-                    : 1,
-                  cursor: deactivating
-                    ? "not-allowed"
-                    : "pointer",
+                  width: "42px",
+                  height: "42px",
+                  fontSize: "26px",
                 }}
               >
-                {deactivating
-                  ? "Deactivating..."
-                  : "Deactivate Node"}
-              </button>
+                <i className="bi bi-diagram-3"></i>
+              </div>
+
+              <div>
+                <h3 className="fw-bold mb-0">
+                  {totalNodes}
+                </h3>
+
+                <div className="text-secondary">
+                  Total Nodes
+                </div>
+              </div>
             </div>
           </div>
         </div>
+
+        {/* Active Nodes */}
+
+        <div className="col-12 col-md-4">
+          <div
+            className="card border-0 h-100"
+            style={{
+              backgroundColor: "#d1e7dd",
+            }}
+          >
+            <div className="card-body d-flex align-items-center gap-3 py-4">
+              <div
+                className="d-flex align-items-center justify-content-center"
+                style={{
+                  width: "42px",
+                  height: "42px",
+                  fontSize: "26px",
+                }}
+              >
+                <i className="bi bi-check-circle"></i>
+              </div>
+
+              <div>
+                <h3 className="fw-bold mb-0">
+                  {activeNodes}
+                </h3>
+
+                <div className="text-secondary">
+                  Active Nodes
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Inactive Nodes */}
+
+        <div className="col-12 col-md-4">
+          <div
+            className="card border-0 h-100"
+            style={{
+              backgroundColor: "#f8d7da",
+            }}
+          >
+            <div className="card-body d-flex align-items-center gap-3 py-4">
+              <div
+                className="d-flex align-items-center justify-content-center"
+                style={{
+                  width: "42px",
+                  height: "42px",
+                  fontSize: "26px",
+                }}
+              >
+                <i className="bi bi-slash-circle"></i>
+              </div>
+
+              <div>
+                <h3 className="fw-bold mb-0">
+                  {inactiveNodes}
+                </h3>
+
+                <div className="text-secondary">
+                  Deactivated
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* =====================================================
+          NODE STATUS OVERVIEW
+      ====================================================== */}
+
+      <div className="card shadow-sm border mb-4">
+        <div className="card-body">
+          <h5 className="fw-bold mb-4">
+            Node Status Overview
+          </h5>
+
+          <div className="row g-4">
+            {/* Active */}
+
+            <div className="col-md-6">
+              <div className="d-flex justify-content-between mb-2">
+                <span className="fw-semibold">
+                  Active Nodes
+                </span>
+
+                <span className="fw-bold">
+                  {activeNodes}
+                </span>
+              </div>
+
+              <div
+                className="progress"
+                style={{ height: "22px" }}
+              >
+                <div
+                  className="progress-bar bg-success"
+                  role="progressbar"
+                  style={{
+                    width:
+                      totalNodes === 0
+                        ? "0%"
+                        : `${
+                            (activeNodes /
+                              totalNodes) *
+                            100
+                          }%`,
+                  }}
+                  aria-valuenow={activeNodes}
+                  aria-valuemin="0"
+                  aria-valuemax={totalNodes}
+                >
+                  {activeNodes}
+                </div>
+              </div>
+            </div>
+
+            {/* Inactive */}
+
+            <div className="col-md-6">
+              <div className="d-flex justify-content-between mb-2">
+                <span className="fw-semibold">
+                  Deactivated Nodes
+                </span>
+
+                <span className="fw-bold">
+                  {inactiveNodes}
+                </span>
+              </div>
+
+              <div
+                className="progress"
+                style={{ height: "22px" }}
+              >
+                <div
+                  className="progress-bar bg-danger"
+                  role="progressbar"
+                  style={{
+                    width:
+                      totalNodes === 0
+                        ? "0%"
+                        : `${
+                            (inactiveNodes /
+                              totalNodes) *
+                            100
+                          }%`,
+                  }}
+                  aria-valuenow={inactiveNodes}
+                  aria-valuemin="0"
+                  aria-valuemax={totalNodes}
+                >
+                  {inactiveNodes}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* =====================================================
+          SEARCH AND FILTER
+      ====================================================== */}
+
+      <div className="row g-2 mb-3">
+        <div className="col-12 col-md-6 col-lg-5">
+          <div className="input-group">
+            <span className="input-group-text bg-white">
+              <i className="bi bi-search"></i>
+            </span>
+
+            <input
+              type="text"
+              className="form-control"
+              value={searchText}
+              onChange={(event) =>
+                setSearchText(event.target.value)
+              }
+              placeholder="Search by node ID, name or location..."
+            />
+          </div>
+        </div>
+
+        <div className="col-6 col-md-3 col-lg-2">
+          <select
+            className="form-select"
+            value={statusFilter}
+            onChange={(event) =>
+              setStatusFilter(event.target.value)
+            }
+          >
+            <option value="all">
+              All Status
+            </option>
+
+            <option value="active">
+              Active
+            </option>
+
+            <option value="inactive">
+              Deactivated
+            </option>
+          </select>
+        </div>
+
+        <div className="col-6 col-md-3 col-lg-2">
+          <button
+            type="button"
+            className="btn btn-outline-secondary w-100"
+            onClick={loadNodes}
+          >
+            <i className="bi bi-arrow-clockwise me-2"></i>
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* =====================================================
+          TABLE
+      ====================================================== */}
+
+      <div className="card shadow-sm border">
+        <div className="card-body p-0">
+          {loading ? (
+            <div className="text-center py-5">
+              <div
+                className="spinner-border text-success mb-3"
+                role="status"
+              >
+                <span className="visually-hidden">
+                  Loading...
+                </span>
+              </div>
+
+              <p className="text-secondary mb-0">
+                Loading microgrid nodes...
+              </p>
+            </div>
+          ) : filteredNodes.length === 0 ? (
+            <div className="text-center py-5">
+              <i
+                className="bi bi-inbox text-secondary"
+                style={{
+                  fontSize: "40px",
+                }}
+              ></i>
+
+              <h5 className="mt-3">
+                No microgrid nodes found
+              </h5>
+
+              <p className="text-secondary mb-0">
+                Try changing your search or
+                status filter.
+              </p>
+            </div>
+          ) : (
+            <div className="table-responsive">
+              <table className="table table-hover align-middle mb-0">
+                <thead className="table-light">
+                  <tr>
+                    <th className="px-4 py-3">
+                      NODE ID
+                    </th>
+
+                    <th className="py-3">
+                      NODE NAME
+                    </th>
+
+                    <th className="py-3">
+                      LOCATION
+                    </th>
+
+                    <th className="py-3">
+                      CAPACITY
+                    </th>
+
+                    <th className="py-3">
+                      BATTERY SLOTS
+                    </th>
+
+                    <th className="py-3">
+                      SCHEDULE
+                    </th>
+
+                    <th className="py-3">
+                      STATUS
+                    </th>
+
+                    <th className="py-3 text-end pe-4">
+                      ACTIONS
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {filteredNodes.map(
+                    (node, index) => {
+                      const mongoId =
+                        getMongoId(node);
+
+                      const status =
+                        getStatus(node);
+
+                      const isActive =
+                        status === "active";
+
+                      const isReactivating =
+                        reactivatingId ===
+                        mongoId;
+
+                      return (
+                        <tr
+                          key={
+                            mongoId ||
+                            getNodeId(node) ||
+                            index
+                          }
+                        >
+                          {/* Node ID */}
+
+                          <td className="px-4 py-3">
+                            <span className="fw-semibold">
+                              {getNodeId(node)}
+                            </span>
+                          </td>
+
+                          {/* Node Name */}
+
+                          <td className="py-3">
+                            <div className="d-flex align-items-center gap-2">
+                              <div
+                                className="d-flex align-items-center justify-content-center rounded-circle bg-success-subtle text-success"
+                                style={{
+                                  width: "34px",
+                                  height: "34px",
+                                  minWidth: "34px",
+                                }}
+                              >
+                                <i className="bi bi-sun-fill"></i>
+                              </div>
+
+                              <span className="fw-medium">
+                                {getNodeName(
+                                  node
+                                )}
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* Location */}
+
+                          <td className="py-3">
+                            <i className="bi bi-geo-alt me-1 text-secondary"></i>
+
+                            {getLocation(node)}
+                          </td>
+
+                          {/* Capacity */}
+
+                          <td className="py-3">
+                            <span className="fw-medium">
+                              {getCapacity(node)}
+                            </span>{" "}
+                            kWh
+                          </td>
+
+                          {/* Battery Slots */}
+
+                          <td className="py-3">
+                            <span className="badge text-bg-light border text-dark">
+                              <i className="bi bi-battery-charging me-1"></i>
+
+                              {getBatterySlots(
+                                node
+                              )}
+                            </span>
+                          </td>
+
+                          {/* Schedule */}
+
+                          <td className="py-3">
+                            <i className="bi bi-clock me-1 text-secondary"></i>
+
+                            {getSchedule(node)}
+                          </td>
+
+                          {/* Status */}
+
+                          <td className="py-3">
+                            {isActive ? (
+                              <span className="badge rounded-pill text-bg-success">
+                                Active
+                              </span>
+                            ) : (
+                              <span className="badge rounded-pill text-bg-secondary">
+                                Deactivated
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Actions */}
+
+                          <td className="py-3 pe-4">
+                            <div className="d-flex justify-content-end flex-wrap gap-1">
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline-secondary"
+                                onClick={() =>
+                                  handleView(
+                                    node
+                                  )
+                                }
+                              >
+                                <i className="bi bi-eye me-1"></i>
+                                View
+                              </button>
+
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline-primary"
+                                onClick={() =>
+                                  handleEdit(
+                                    node
+                                  )
+                                }
+                              >
+                                <i className="bi bi-pencil me-1"></i>
+                                Edit
+                              </button>
+
+                              {isActive ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-danger"
+                                  onClick={() =>
+                                    openDeactivateModal(
+                                      node
+                                    )
+                                  }
+                                >
+                                  <i className="bi bi-slash-circle me-1"></i>
+                                  Deactivate
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-success"
+                                  disabled={
+                                    isReactivating
+                                  }
+                                  onClick={() =>
+                                    handleReactivate(
+                                      node
+                                    )
+                                  }
+                                >
+                                  {isReactivating ? (
+                                    <>
+                                      <span
+                                        className="spinner-border spinner-border-sm me-1"
+                                        aria-hidden="true"
+                                      ></span>
+
+                                      Reactivating...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <i className="bi bi-arrow-counterclockwise me-1"></i>
+                                      Reactivate
+                                    </>
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* =====================================================
+          RESULT COUNT
+      ====================================================== */}
+
+      {!loading && (
+        <div className="d-flex justify-content-between align-items-center mt-3">
+          <small className="text-secondary">
+            Showing {filteredNodes.length} of{" "}
+            {totalNodes} microgrid nodes
+          </small>
+        </div>
+      )}
+
+      {/* =====================================================
+          DEACTIVATE CONFIRMATION MODAL
+      ====================================================== */}
+
+      {nodeToDeactivate && (
+        <>
+          <div
+            className="modal fade show"
+            style={{
+              display: "block",
+              backgroundColor:
+                "rgba(0, 0, 0, 0.45)",
+            }}
+            tabIndex="-1"
+            role="dialog"
+          >
+            <div className="modal-dialog modal-dialog-centered">
+              <div className="modal-content border-0 shadow">
+                {/* Modal Header */}
+
+                <div className="modal-header border-0 pb-0">
+                  <div>
+                    <div
+                      className="d-flex align-items-center justify-content-center rounded-circle bg-danger-subtle text-danger mb-3"
+                      style={{
+                        width: "48px",
+                        height: "48px",
+                        fontSize: "22px",
+                      }}
+                    >
+                      <i className="bi bi-exclamation-triangle-fill"></i>
+                    </div>
+
+                    <h4 className="modal-title fw-bold">
+                      Deactivate Microgrid
+                      Node?
+                    </h4>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn-close align-self-start"
+                    onClick={
+                      closeDeactivateModal
+                    }
+                    disabled={deactivating}
+                    aria-label="Close"
+                  ></button>
+                </div>
+
+                {/* Modal Body */}
+
+                <div className="modal-body pt-3">
+                  <p className="text-secondary">
+                    You are about to deactivate{" "}
+                    <strong className="text-dark">
+                      {getNodeName(
+                        nodeToDeactivate
+                      )}
+                    </strong>
+                    .
+                  </p>
+
+                  <p className="text-secondary">
+                    This node will no longer be
+                    available for new energy
+                    reservations.
+                  </p>
+
+                  <div
+                    className="alert alert-warning"
+                    role="alert"
+                  >
+                    <div className="d-flex gap-2">
+                      <i className="bi bi-exclamation-circle-fill"></i>
+
+                      <div>
+                        <strong>
+                          Important:
+                        </strong>
+
+                        <div className="mt-1">
+                          A microgrid node
+                          cannot be deactivated
+                          when active energy
+                          reservations exist.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {deactivateError && (
+                    <div
+                      className="alert alert-danger"
+                      role="alert"
+                    >
+                      <strong>
+                        Unable to deactivate
+                        node
+                      </strong>
+
+                      <div className="mt-1">
+                        {deactivateError}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Modal Footer */}
+
+                <div className="modal-footer border-0">
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary"
+                    onClick={
+                      closeDeactivateModal
+                    }
+                    disabled={deactivating}
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    onClick={
+                      confirmDeactivate
+                    }
+                    disabled={deactivating}
+                  >
+                    {deactivating ? (
+                      <>
+                        <span
+                          className="spinner-border spinner-border-sm me-2"
+                          aria-hidden="true"
+                        ></span>
+
+                        Deactivating...
+                      </>
+                    ) : (
+                      <>
+                        <i className="bi bi-slash-circle me-2"></i>
+                        Deactivate Node
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
 }
-
-// =========================================================
-// STYLES
-// =========================================================
-
-const styles = {
-  page: {
-    padding: "32px",
-    background: "#F7F5F1",
-    minHeight: "calc(100vh - 71px)",
-    boxSizing: "border-box",
-  },
-
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: "20px",
-    marginBottom: "24px",
-  },
-
-  title: {
-    margin: 0,
-    color: "#111827",
-    fontSize: "30px",
-    fontWeight: 700,
-  },
-
-  subtitle: {
-    marginTop: "7px",
-    marginBottom: 0,
-    color: "#6B6862",
-    fontSize: "14px",
-  },
-
-  addButton: {
-    border: "none",
-    borderRadius: "8px",
-    padding: "11px 17px",
-    background: "#1E7A4D",
-    color: "#FFFFFF",
-    cursor: "pointer",
-    fontSize: "14px",
-    fontWeight: 600,
-  },
-
-  summaryGrid: {
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(auto-fit, minmax(200px, 1fr))",
-    gap: "16px",
-    marginBottom: "20px",
-  },
-
-  summaryCard: {
-    background: "#FFFFFF",
-    border: "1px solid #DEDAD3",
-    borderRadius: "10px",
-    padding: "20px",
-  },
-
-  summaryLabel: {
-    color: "#77736D",
-    fontSize: "12px",
-    fontWeight: 600,
-  },
-
-  summaryValue: {
-    color: "#111827",
-    fontSize: "27px",
-    fontWeight: 700,
-    marginTop: "7px",
-  },
-
-  summaryValueGreen: {
-    color: "#1E7A4D",
-    fontSize: "27px",
-    fontWeight: 700,
-    marginTop: "7px",
-  },
-
-  toolbar: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: "10px",
-    marginBottom: "16px",
-  },
-
-  searchInput: {
-    flex: 1,
-    minWidth: "280px",
-    padding: "11px 13px",
-    border: "1px solid #D7D3CB",
-    borderRadius: "8px",
-    background: "#FFFFFF",
-    fontSize: "14px",
-    outline: "none",
-  },
-
-  filterSelect: {
-    minWidth: "145px",
-    padding: "10px 12px",
-    border: "1px solid #D7D3CB",
-    borderRadius: "8px",
-    background: "#FFFFFF",
-    fontSize: "14px",
-    outline: "none",
-  },
-
-  refreshButton: {
-    padding: "10px 16px",
-    border: "1px solid #D7D3CB",
-    borderRadius: "8px",
-    background: "#FFFFFF",
-    cursor: "pointer",
-    fontWeight: 600,
-  },
-
-  tableCard: {
-    background: "#FFFFFF",
-    border: "1px solid #DEDAD3",
-    borderRadius: "12px",
-    overflow: "hidden",
-  },
-
-  tableWrapper: {
-    overflowX: "auto",
-  },
-
-  table: {
-    width: "100%",
-    borderCollapse: "collapse",
-  },
-
-  th: {
-    padding: "14px 15px",
-    textAlign: "left",
-    background: "#F7F5F1",
-    color: "#69655F",
-    fontSize: "11px",
-    fontWeight: 700,
-    borderBottom: "1px solid #DEDAD3",
-    whiteSpace: "nowrap",
-  },
-
-  td: {
-    padding: "15px",
-    color: "#2B2B2B",
-    fontSize: "13px",
-    borderBottom: "1px solid #EEEAE4",
-    verticalAlign: "middle",
-  },
-
-  activeBadge: {
-    display: "inline-block",
-    padding: "5px 10px",
-    borderRadius: "20px",
-    background: "#E7F7ED",
-    color: "#18794E",
-    fontSize: "12px",
-    fontWeight: 600,
-  },
-
-  inactiveBadge: {
-    display: "inline-block",
-    padding: "5px 10px",
-    borderRadius: "20px",
-    background: "#F1F1F1",
-    color: "#6B6862",
-    fontSize: "12px",
-    fontWeight: 600,
-  },
-
-  actionGroup: {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    whiteSpace: "nowrap",
-  },
-
-  viewButton: {
-    padding: "7px 10px",
-    border: "1px solid #D7D3CB",
-    borderRadius: "6px",
-    background: "#FFFFFF",
-    color: "#333333",
-    cursor: "pointer",
-    fontSize: "12px",
-    fontWeight: 600,
-  },
-
-  editButton: {
-    padding: "7px 10px",
-    border: "1px solid #BFDCCB",
-    borderRadius: "6px",
-    background: "#EEF8F2",
-    color: "#176B45",
-    cursor: "pointer",
-    fontSize: "12px",
-    fontWeight: 600,
-  },
-
-  deactivateButton: {
-    padding: "7px 10px",
-    border: "1px solid #F4B8B4",
-    borderRadius: "6px",
-    background: "#FFF5F4",
-    color: "#B42318",
-    cursor: "pointer",
-    fontSize: "12px",
-    fontWeight: 600,
-  },
-
-  reactivateButton: {
-    padding: "7px 10px",
-    border: "1px solid #BFDCCB",
-    borderRadius: "6px",
-    background: "#EEF8F2",
-    color: "#176B45",
-    cursor: "pointer",
-    fontSize: "12px",
-    fontWeight: 600,
-  },
-
-  emptyState: {
-    padding: "45px",
-    textAlign: "center",
-    color: "#77736D",
-    fontSize: "14px",
-  },
-
-  successBox: {
-    padding: "13px 16px",
-    marginBottom: "18px",
-    border: "1px solid #BFDCCB",
-    borderRadius: "8px",
-    background: "#EEF8F2",
-    color: "#176B45",
-    fontSize: "13px",
-  },
-
-  errorBox: {
-    padding: "13px 16px",
-    marginBottom: "18px",
-    border: "1px solid #FECACA",
-    borderRadius: "8px",
-    background: "#FEF3F2",
-    color: "#B42318",
-    fontSize: "13px",
-  },
-
-  // =======================================================
-  // MODAL
-  // =======================================================
-
-  modalOverlay: {
-    position: "fixed",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 9999,
-    background: "rgba(0, 0, 0, 0.45)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "20px",
-  },
-
-  modal: {
-    width: "100%",
-    maxWidth: "500px",
-    background: "#FFFFFF",
-    borderRadius: "14px",
-    padding: "28px",
-    boxShadow:
-      "0 20px 60px rgba(0, 0, 0, 0.25)",
-  },
-
-  warningIcon: {
-    width: "46px",
-    height: "46px",
-    borderRadius: "50%",
-    background: "#FFF0EE",
-    color: "#B42318",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "25px",
-    fontWeight: 800,
-    marginBottom: "16px",
-  },
-
-  modalTitle: {
-    marginTop: 0,
-    marginBottom: "12px",
-    color: "#111827",
-    fontSize: "22px",
-  },
-
-  modalText: {
-    color: "#5F5B55",
-    fontSize: "14px",
-    lineHeight: 1.6,
-    marginTop: "7px",
-    marginBottom: "7px",
-  },
-
-  warningBox: {
-    marginTop: "18px",
-    padding: "13px 14px",
-    border: "1px solid #F4D5A6",
-    borderRadius: "8px",
-    background: "#FFF8E8",
-    color: "#76520A",
-    fontSize: "13px",
-    lineHeight: 1.5,
-  },
-
-  modalError: {
-    marginTop: "14px",
-    padding: "13px 14px",
-    border: "1px solid #FECACA",
-    borderRadius: "8px",
-    background: "#FEF3F2",
-    color: "#B42318",
-    fontSize: "13px",
-  },
-
-  modalActions: {
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: "10px",
-    marginTop: "24px",
-  },
-
-  cancelButton: {
-    padding: "10px 16px",
-    border: "1px solid #D7D3CB",
-    borderRadius: "8px",
-    background: "#FFFFFF",
-    color: "#333333",
-    cursor: "pointer",
-    fontWeight: 600,
-  },
-
-  confirmDeactivateButton: {
-    padding: "10px 16px",
-    border: "none",
-    borderRadius: "8px",
-    background: "#B42318",
-    color: "#FFFFFF",
-    cursor: "pointer",
-    fontWeight: 600,
-  },
-};
 
 export default MicrogridNodes;
