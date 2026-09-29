@@ -5,6 +5,7 @@
 // Author: Thumashi (Component 1)
 // =============================================================================
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
 using MicrogridApi.Data;
@@ -14,6 +15,7 @@ namespace MicrogridApi.Controllers;
 
 [ApiController]
 [Route("api/prosumers")]
+[Authorize]
 public class ProsumersController : ControllerBase
 {
     private readonly MongoDbContext _db;
@@ -26,6 +28,7 @@ public class ProsumersController : ControllerBase
 
     // GET: api/prosumers - returns every prosumer (used by the web admin page).
     [HttpGet]
+    [Authorize(Roles = "Backoffice")]
     public async Task<IActionResult> GetAll()
     {
         var prosumers = await _db.Prosumers.Find(_ => true).ToListAsync();
@@ -35,6 +38,7 @@ public class ProsumersController : ControllerBase
     // POST: api/prosumers/register - self registration from the mobile app.
     // Rejects empty details and duplicate NICs; new accounts start as pendingActivation.
     [HttpPost("register")]
+    [AllowAnonymous]
     public async Task<IActionResult> Register(Prosumer newProsumer)
     {
         if (string.IsNullOrWhiteSpace(newProsumer.Nic) ||
@@ -91,6 +95,7 @@ public class ProsumersController : ControllerBase
 
     // PATCH: api/prosumers/{nic}/deactivate - blocks the account from logging in.
     [HttpPatch("{nic}/deactivate")]
+    [Authorize(Roles = "Backoffice,Prosumer")]
     public async Task<IActionResult> Deactivate(string nic)
     {
         var update = Builders<Prosumer>.Update.Set(p => p.Status, "deactivated");
@@ -101,6 +106,7 @@ public class ProsumersController : ControllerBase
 
     // PATCH: api/prosumers/{nic}/reactivate - approves a pending account or restores a deactivated one.
     [HttpPatch("{nic}/reactivate")]
+    [Authorize(Roles = "Backoffice")]
     public async Task<IActionResult> Reactivate(string nic)
     {
         var update = Builders<Prosumer>.Update.Set(p => p.Status, "active");

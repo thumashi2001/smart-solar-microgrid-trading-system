@@ -17,6 +17,10 @@ import androidx.compose.ui.unit.sp
 import com.microgrid.app.data.RetrofitClient
 import kotlinx.coroutines.launch
 
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import com.microgrid.app.data.ProsumerRegisterRequest
+
 @Composable
 fun MyProfileScreen(
     fullName: String,
@@ -24,10 +28,20 @@ fun MyProfileScreen(
     onBack: () -> Unit,
     onAccountDeactivated: () -> Unit
 ) {
+    var isEditing by remember { mutableStateOf(false) }
+    var editFullName by remember { mutableStateOf(fullName) }
+    var editEmail by remember { mutableStateOf("") }
+    var editPhone by remember { mutableStateOf("") }
+    
+    var displayFullName by remember { mutableStateOf(fullName) }
+    var displayEmail by remember { mutableStateOf("") }
+    var displayPhone by remember { mutableStateOf("") }
+
     var showConfirmDialog by remember { mutableStateOf(false) }
     var showSuccessDialog by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var successMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     Column(modifier = Modifier.fillMaxSize().background(PageBg)) {
@@ -41,9 +55,35 @@ fun MyProfileScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    ProfileField("Full Name", fullName)
-                    ProfileField("NIC", nic)
-                    ProfileField("Role", "Prosumer")
+                    if (isEditing) {
+                        OutlinedTextField(
+                            value = editFullName, onValueChange = { editFullName = it },
+                            label = { Text("Full Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = nic, onValueChange = { },
+                            label = { Text("NIC") }, modifier = Modifier.fillMaxWidth(), enabled = false, singleLine = true
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = editEmail, onValueChange = { editEmail = it },
+                            label = { Text("Email") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = editPhone, onValueChange = { editPhone = it },
+                            label = { Text("Phone") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
+                        )
+                    } else {
+                        ProfileField("Full Name", displayFullName)
+                        ProfileField("NIC", nic)
+                        if (displayEmail.isNotBlank()) ProfileField("Email", displayEmail)
+                        if (displayPhone.isNotBlank()) ProfileField("Phone", displayPhone)
+                        ProfileField("Role", "Prosumer")
+                    }
                 }
             }
 
@@ -51,17 +91,87 @@ fun MyProfileScreen(
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
             }
+            successMessage?.let {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(it, color = Color(0xFF2E7D4F), fontSize = 13.sp)
+            }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            OutlinedButton(
-                onClick = { showConfirmDialog = true },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB14A3C)),
-                enabled = !isLoading
-            ) {
-                Text(if (isLoading) "Processing..." else "Deactivate My Account")
+            if (isEditing) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { 
+                            isEditing = false 
+                            errorMessage = null
+                        },
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Cancel", color = DarkGreen)
+                    }
+                    Button(
+                        onClick = {
+                            errorMessage = null
+                            successMessage = null
+                            isLoading = true
+                            scope.launch {
+                                try {
+                                    val request = ProsumerRegisterRequest(
+                                        nic = nic,
+                                        fullName = editFullName,
+                                        email = editEmail,
+                                        phone = editPhone,
+                                        passwordHash = "" // Password update handled in Change Password
+                                    )
+                                    val response = RetrofitClient.instance.updateProsumer(nic, request)
+                                    isLoading = false
+                                    if (response.isSuccessful) {
+                                        displayFullName = editFullName
+                                        displayEmail = editEmail
+                                        displayPhone = editPhone
+                                        isEditing = false
+                                        successMessage = "Profile updated successfully."
+                                    } else {
+                                        errorMessage = "Failed to update profile."
+                                    }
+                                } catch (e: Exception) {
+                                    isLoading = false
+                                    errorMessage = "Could not connect to server."
+                                }
+                            }
+                        },
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentGreen),
+                        shape = RoundedCornerShape(10.dp),
+                        enabled = !isLoading
+                    ) {
+                        Text(if (isLoading) "Saving..." else "Save")
+                    }
+                }
+            } else {
+                Button(
+                    onClick = { 
+                        isEditing = true
+                        successMessage = null
+                        errorMessage = null 
+                    },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentGreen),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Edit Profile")
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = { showConfirmDialog = true },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB14A3C)),
+                    enabled = !isLoading
+                ) {
+                    Text(if (isLoading) "Processing..." else "Deactivate My Account")
+                }
             }
         }
     }

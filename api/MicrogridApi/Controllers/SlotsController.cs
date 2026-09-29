@@ -5,6 +5,7 @@
 //              optimistic concurrency safeguards, and status transitions.
 // ============================================================================
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -16,6 +17,7 @@ namespace MicrogridApi.Controllers;
 
 [ApiController]
 [Route("api/slots")]
+[Authorize]
 public class SlotsController : ControllerBase
 {
     private readonly MongoDbContext _db;
@@ -36,6 +38,7 @@ public class SlotsController : ControllerBase
     /// Returns slots with optional filtering by stationId and calendar date (YYYY-MM-DD).
     /// </summary>
     [HttpGet]
+    [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetAll([FromQuery] string? stationId, [FromQuery] string? date)
@@ -71,6 +74,7 @@ public class SlotsController : ControllerBase
     /// Returns one slot using its MongoDB ID.
     /// </summary>
     [HttpGet("{id}")]
+    [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(string id)
@@ -97,6 +101,7 @@ public class SlotsController : ControllerBase
     /// Creates a new energy booking slot with collision retry and database-level uniqueness.
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Backoffice,GridOperator")]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
@@ -202,6 +207,7 @@ public class SlotsController : ControllerBase
     /// availability and timestamp invariants during the update operation.
     /// </summary>
     [HttpPut("{id}")]
+    [Authorize(Roles = "Backoffice,GridOperator")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

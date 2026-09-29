@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.microgrid.app.data.Reservation
 import com.microgrid.app.data.RetrofitClient
 
 private val DashboardGreen = Color(0xFF1E7A4D)
@@ -29,12 +30,15 @@ fun ProsumerDashboardScreen(
     onProfileClick: () -> Unit,
     onBookingsClick: () -> Unit,
     onHistoryClick: () -> Unit,
-    onSearchClick: () -> Unit
+    onSearchClick: () -> Unit,
+    onFindEnergyClick: () -> Unit,
+    onNearbyStationsClick: () -> Unit
 ) {
 
     // Reservation summary values loaded from the API
     var pendingCount by remember { mutableIntStateOf(0) }
     var approvedCount by remember { mutableIntStateOf(0) }
+    var upcomingReservation by remember { mutableStateOf<Reservation?>(null) }
 
     var isLoadingSummary by remember { mutableStateOf(true) }
     var summaryLoadFailed by remember { mutableStateOf(false) }
@@ -79,11 +83,17 @@ fun ProsumerDashboardScreen(
                         ignoreCase = true
                     )
                 }
+                
+                upcomingReservation = reservations.firstOrNull {
+                    it.status.equals("Pending", ignoreCase = true) ||
+                    it.status.equals("Approved", ignoreCase = true)
+                }
 
             } else {
 
                 pendingCount = 0
                 approvedCount = 0
+                upcomingReservation = null
                 summaryLoadFailed = true
             }
 
@@ -91,6 +101,7 @@ fun ProsumerDashboardScreen(
 
             pendingCount = 0
             approvedCount = 0
+            upcomingReservation = null
             summaryLoadFailed = true
 
         } finally {
@@ -278,9 +289,7 @@ fun ProsumerDashboardScreen(
                     Spacer(modifier = Modifier.height(18.dp))
 
                     Button(
-                        onClick = {
-                            // Reservation screen will be connected later
-                        },
+                        onClick = onFindEnergyClick,
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color.White,
@@ -351,9 +360,9 @@ fun ProsumerDashboardScreen(
 
                 QuickActionCard(
                     modifier = Modifier.weight(1f),
-                    title = "Profile",
-                    icon = Icons.Default.Person,
-                    onClick = onProfileClick
+                    title = "Nearby",
+                    icon = Icons.Default.LocationOn,
+                    onClick = onNearbyStationsClick
                 )
             }
 
@@ -386,28 +395,64 @@ fun ProsumerDashboardScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
 
-                    Icon(
-                        imageVector = Icons.Default.EventAvailable,
-                        contentDescription = null,
-                        tint = DashboardGreen,
-                        modifier = Modifier.size(36.dp)
-                    )
+                    if (upcomingReservation != null) {
+                        val res = upcomingReservation!!
+                        Icon(
+                            imageVector = Icons.Default.EventAvailable,
+                            contentDescription = null,
+                            tint = DashboardGreen,
+                            modifier = Modifier.size(36.dp)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "Station: ${res.stationId}",
+                            fontWeight = FontWeight.SemiBold,
+                            color = DashboardDarkGreen,
+                            fontSize = 15.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Slot: ${res.slotId}",
+                            fontSize = 13.sp,
+                            color = Color.Gray
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Surface(
+                            color = if (res.status == "Approved") Color(0xFFE6F4EA) else Color(0xFFFEF7E0),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                res.status, 
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), 
+                                fontSize = 11.sp, 
+                                fontWeight = FontWeight.Bold, 
+                                color = if (res.status == "Approved") Color(0xFF137333) else Color(0xFFB06000)
+                            )
+                        }
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.EventAvailable,
+                            contentDescription = null,
+                            tint = DashboardGreen,
+                            modifier = Modifier.size(36.dp)
+                        )
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
-                    Text(
-                        text = "No upcoming reservation",
-                        fontWeight = FontWeight.SemiBold,
-                        color = DashboardDarkGreen
-                    )
+                        Text(
+                            text = "No upcoming reservation",
+                            fontWeight = FontWeight.SemiBold,
+                            color = DashboardDarkGreen
+                        )
 
-                    Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
 
-                    Text(
-                        text = "Your approved reservation will appear here.",
-                        fontSize = 12.sp,
-                        color = Color.Gray
-                    )
+                        Text(
+                            text = "Your approved reservation will appear here.",
+                            fontSize = 12.sp,
+                            color = Color.Gray
+                        )
+                    }
                 }
             }
         }

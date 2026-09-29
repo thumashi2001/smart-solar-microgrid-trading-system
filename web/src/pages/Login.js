@@ -22,8 +22,12 @@ function Login() {
     try {
       const res = await api.post("/auth/login", { identifier, password });
 
-      if (res.data.role === "Prosumer") {
-        setError("Prosumer accounts must use the mobile app to log in.");
+      if (res.data.role === "Prosumer" || res.data.role === "GridOperator") {
+        setError(
+          res.data.role === "GridOperator" 
+            ? "Grid Operator accounts must use the mobile app to log in."
+            : "Prosumer accounts must use the mobile app to log in."
+        );
         return;
       }
 
@@ -32,7 +36,6 @@ function Login() {
       localStorage.setItem("fullName", res.data.fullName);
 
       if (res.data.role === "Backoffice") navigate("/dashboard");
-      else if (res.data.role === "GridOperator") navigate("/operator");
     } catch (err) {
       setError("Invalid email/NIC or password.");
     }

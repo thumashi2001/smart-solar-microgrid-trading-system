@@ -5,6 +5,7 @@
 //              atomic availability exchange, duplicate key retries, and cancellation integrity.
 // ============================================================================
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -16,6 +17,7 @@ namespace MicrogridApi.Controllers;
 
 [ApiController]
 [Route("api/reservations")]
+[Authorize]
 public class ReservationsController : ControllerBase
 {
     private readonly MongoDbContext _db;
@@ -36,6 +38,7 @@ public class ReservationsController : ControllerBase
     /// Returns all reservations.
     /// </summary>
     [HttpGet]
+    [Authorize(Roles = "Backoffice")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAll()
     {
@@ -683,5 +686,58 @@ public class ReservationsController : ControllerBase
             message = "Reservation cancelled successfully.", 
             reservation = updatedReservation 
         });
+    }
+
+    /// <summary>
+    /// PATCH: api/reservations/{id}/approve
+    /// Backoffice approval endpoint for pending reservations.
+    /// </summary>
+    [HttpPatch("{id}/approve")]
+    [Authorize(Roles = "Backoffice")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Approve(string id)
+    {
+        var existingReservation = await _db.EnergyReservations
+            .Find(r => r.Id == id)
+            .FirstOrDefaultAsync();
+
+        if (existingReservation == null)
+        {
+            return NotFound(new { message = "Reservation not found." });
+        }
+
+        if (existingReservation.Status != "Pending")
+        {
+            return BadRequest(new { message = $"Cannot approve reservation in '{existingReservation.Status}' status. Must be 'Pending'." });
+        }
+
+        // Generate TransactionReference for QR operator workflow
+        var txRef = $"TX-{Guid.NewGuid().ToString("N")[..8].ToUpper()}";
+
+        var filter = Builders<EnergyReservation>.Filter.And(
+            Builders<EnergyReservation>.Filter.Eq(r => r.Id, id),
+            Builders<EnergyReservation>.Filter.Eq(r => r.Status, "Pending"),
+            Builders<EnergyReservation>.Filter.Eq(r => r.UpdatedAt, existingReservation.UpdatedAt)
+        );
+
+        var update = Builders<EnergyReservation>.Update
+            .Set(r => r.Status, "Approved")
+            .Set(r => r.TransactionReference, txRef)
+            .Set(r => r.UpdatedAt, DateTime.UtcNow);
+
+        var updatedReservation = await _db.EnergyReservations.FindOneAndUpdateAsync(
+            filter,
+            update,
+            new FindOneAndUpdateOptions<EnergyReservation> { ReturnDocument = ReturnDocument.After }
+        );
+
+        if (updatedReservation == null)
+        {
+            return Conflict(new { message = "Reservation was concurrently modified." });
+        }
+
+        return Ok(updatedReservation);
     }
 }

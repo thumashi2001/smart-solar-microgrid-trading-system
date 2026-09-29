@@ -184,6 +184,8 @@ class MainActivity : ComponentActivity() {
                                 onBookingsClick = { currentScreen = Screen.Bookings },
                                 onHistoryClick = { currentScreen = Screen.BookingHistory },
                                 onSearchClick = { currentScreen = Screen.SearchBookings },
+                                onFindEnergyClick = { currentScreen = Screen.StationSelection },
+                                onNearbyStationsClick = { startActivity(Intent(this@MainActivity, StationsMapActivity::class.java)) }
                             )
                         }
                         is Screen.Bookings -> {
