@@ -4,6 +4,7 @@
 // Author: Nethasa / Suwani (nearby endpoint only)
 // =============================================================================
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
 using MicrogridApi.Data;
@@ -14,6 +15,7 @@ namespace MicrogridApi.Controllers;
 
 [ApiController]
 [Route("api/microgridnodes")]
+[Authorize]
 public class MicrogridNodesController : ControllerBase
 {
     private const double DefaultNearbyRadiusKm = 10.0;
@@ -29,6 +31,7 @@ public class MicrogridNodesController : ControllerBase
     // GET: api/microgridnodes
     // Returns all microgrid nodes.
     [HttpGet]
+    [AllowAnonymous]
     public async Task<IActionResult> GetAll()
     {
         var nodes = await _db.MicrogridNodes
@@ -41,6 +44,7 @@ public class MicrogridNodesController : ControllerBase
     // GET: api/microgridnodes/nearby?lat=&lng=&radiusKm=
     // Returns active stations within radius (default 10 km). Suwani map integration.
     [HttpGet("nearby")]
+    [AllowAnonymous]
     public async Task<IActionResult> GetNearby(
         [FromQuery] double lat,
         [FromQuery] double lng,
@@ -93,6 +97,7 @@ public class MicrogridNodesController : ControllerBase
     // GET: api/microgridnodes/{id}
     // Returns one microgrid node using its MongoDB ID.
     [HttpGet("{id}")]
+    [AllowAnonymous]
     public async Task<IActionResult> GetById(string id)
     {
         var node = await _db.MicrogridNodes
@@ -113,6 +118,7 @@ public class MicrogridNodesController : ControllerBase
     // POST: api/microgridnodes
     // Creates a new microgrid node.
     [HttpPost]
+    [Authorize(Roles = "Backoffice")]
     public async Task<IActionResult> Create(MicrogridNode newNode)
     {
         if (string.IsNullOrWhiteSpace(newNode.NodeName))
@@ -158,6 +164,7 @@ public class MicrogridNodesController : ControllerBase
     // PUT: api/microgridnodes/{id}
     // Updates an existing microgrid node.
     [HttpPut("{id}")]
+    [Authorize(Roles = "Backoffice")]
     public async Task<IActionResult> Update(
         string id,
         MicrogridNode updatedNode)
@@ -221,6 +228,7 @@ public class MicrogridNodesController : ControllerBase
     // PATCH: api/microgridnodes/{id}/deactivate
     // Marks a microgrid node as inactive.
     [HttpPatch("{id}/deactivate")]
+    [Authorize(Roles = "Backoffice")]
     public async Task<IActionResult> Deactivate(string id)
     {
         var node = await _db.MicrogridNodes
@@ -233,6 +241,14 @@ public class MicrogridNodesController : ControllerBase
             {
                 message = "Microgrid node not found."
             });
+        }
+
+        var activeReservationsCount = await _db.EnergyReservations
+            .CountDocumentsAsync(r => r.StationId == node.NodeId && (r.Status == "Pending" || r.Status == "Approved"));
+
+        if (activeReservationsCount > 0)
+        {
+            return BadRequest(new { message = "Cannot deactivate node because it has active energy reservations." });
         }
 
         var update = Builders<MicrogridNode>.Update
@@ -253,6 +269,7 @@ public class MicrogridNodesController : ControllerBase
     // PATCH: api/microgridnodes/{id}/reactivate
     // Reactivates an inactive microgrid node.
     [HttpPatch("{id}/reactivate")]
+    [Authorize(Roles = "Backoffice")]
     public async Task<IActionResult> Reactivate(string id)
     {
         var node = await _db.MicrogridNodes

@@ -15,6 +15,7 @@ function ReservationManagement() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [successMessage, setSuccessMessage] = useState("");
+  const [processingId, setProcessingId] = useState(null);
 
   const loadReservations = useCallback(async () => {
     try {
@@ -36,7 +37,39 @@ function ReservationManagement() {
 
   useEffect(() => { loadReservations(); }, [loadReservations]);
 
-  // ── Stats ──────────────────────────────────────────────────────
+  const handleApprove = async (id) => {
+    try {
+      setProcessingId(id);
+      setError("");
+      await api.patch(`/reservations/${id}/approve`);
+      showSuccess("Reservation approved successfully!");
+      await loadReservations();
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to approve reservation.");
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const showSuccess = (msg) => {
+    setSuccessMessage(msg);
+    setTimeout(() => setSuccessMessage(""), 4000);
+  };
+
+  const fmtDate = (d) => {
+    if (!d) return "-";
+    try { return new Date(d).toISOString().replace("T", " ").slice(0, 16) + " UTC"; } catch { return d; }
+  };
+
+  const statusBadge = (status) => {
+    switch (status) {
+      case "Approved": return "text-bg-success";
+      case "Cancelled": return "text-bg-danger";
+      case "Completed": return "text-bg-primary";
+      default: return "text-bg-warning";
+    }
+  };
+
   const stats = useMemo(() => ({
     total: reservations.length,
     pending: reservations.filter((r) => r.status === "Pending").length,
@@ -45,7 +78,6 @@ function ReservationManagement() {
     completed: reservations.filter((r) => r.status === "Completed").length,
   }), [reservations]);
 
-  // ── Filter ─────────────────────────────────────────────────────
   const filtered = useMemo(() => reservations.filter((r) => {
     if (selectedStatus !== "all" && r.status !== selectedStatus) return false;
     if (searchQuery.trim()) {
@@ -60,137 +92,112 @@ function ReservationManagement() {
     return true;
   }), [reservations, selectedStatus, searchQuery]);
 
-  // ── Helpers ────────────────────────────────────────────────────
-  const showSuccess = (msg) => {
-    setSuccessMessage(msg);
-    setTimeout(() => setSuccessMessage(""), 4000);
-  };
-
-  const fmtDate = (d) => {
-    if (!d) return "-";
-    try { return new Date(d).toISOString().replace("T", " ").slice(0, 16) + " UTC"; } catch { return d; }
-  };
-
-  const statusStyle = (status) => {
-    switch (status) {
-      case "Approved": return { bg: "#E6F4EA", color: "#137333" };
-      case "Cancelled": return { bg: "#FCE8E6", color: "#C5221F" };
-      case "Completed": return { bg: "#E8F0FE", color: "#1A73E8" };
-      default: return { bg: "#FEF7E0", color: "#B06000" }; // Pending
-    }
-  };
-
-  // ── Design tokens ──────────────────────────────────────────────
-  const c = {
-    primary: "#0B3B2E", accent: "#1E7A4D", bg: "#F7F5F1",
-    card: "#fff", border: "#E4E1DA", textMain: "#1C1F1E", textMuted: "#6B6862",
-    green: "#137333", red: "#C5221F",
-  };
-  const inputStyle = {
-    width: "100%", padding: "10px 12px", borderRadius: "8px",
-    border: `1px solid ${c.border}`, fontSize: "14px", outline: "none",
-    boxSizing: "border-box", background: "#fff", color: c.textMain,
-  };
-
-  // ================================================================
   return (
-    <div style={{ padding: "32px", maxWidth: "1400px", margin: "0 auto", fontFamily: "'Segoe UI', Arial, sans-serif" }}>
-
-      {/* HEADER */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px", flexWrap: "wrap", gap: "16px" }}>
+    <div className="container-fluid p-4 p-md-5">
+      {/* Header */}
+      <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
         <div>
-          <h1 style={{ fontSize: "26px", fontWeight: 700, color: c.textMain, margin: "0 0 6px 0" }}>
-            📋 Reservation Management
-          </h1>
-          <p style={{ margin: 0, color: c.textMuted, fontSize: "14px" }}>
+          <h2 className="h3 mb-1">📋 Reservation Management</h2>
+          <p className="text-secondary mb-0">
             Monitor all prosumer energy booking reservations across all microgrid stations.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={loadReservations}
-          style={{ padding: "10px 18px", borderRadius: "8px", border: `1px solid ${c.border}`, background: "#fff", color: c.textMain, fontSize: "14px", fontWeight: 600, cursor: "pointer" }}
-        >
-          ↻ Refresh
+        <button onClick={loadReservations} className="btn btn-outline-secondary fw-semibold">
+          <i className="bi bi-arrow-clockwise me-1"></i> Refresh
         </button>
       </div>
 
-      {/* BANNERS */}
+      {/* Alerts */}
       {successMessage && (
-        <div style={{ background: "#E6F4EA", border: "1px solid #CEEAD6", color: c.green, padding: "12px 18px", borderRadius: "8px", marginBottom: "20px", fontSize: "14px", fontWeight: 500 }}>
+        <div className="alert alert-success fw-semibold" role="alert">
           ✓ {successMessage}
         </div>
       )}
       {error && (
-        <div style={{ background: "#FCE8E6", border: "1px solid #FAD2CF", color: c.red, padding: "12px 18px", borderRadius: "8px", marginBottom: "20px", fontSize: "14px", fontWeight: 500, display: "flex", justifyContent: "space-between" }}>
+        <div className="alert alert-danger d-flex justify-content-between fw-semibold" role="alert">
           <span>⚠ {error}</span>
-          <button type="button" onClick={() => setError("")} style={{ background: "none", border: "none", color: c.red, cursor: "pointer", fontWeight: 700 }}>✕</button>
+          <button type="button" className="btn-close" onClick={() => setError("")}></button>
         </div>
       )}
 
-      {/* KPI CARDS */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "16px", marginBottom: "24px" }}>
+      {/* KPI Cards */}
+      <div className="row g-3 mb-4">
         {[
-          { label: "Total", value: stats.total, bg: "#F7F5F1", color: c.textMain },
-          { label: "Pending", value: stats.pending, bg: "#FEF7E0", color: "#B06000" },
-          { label: "Approved", value: stats.approved, bg: "#E6F4EA", color: c.green },
-          { label: "Completed", value: stats.completed, bg: "#E8F0FE", color: "#1A73E8" },
-          { label: "Cancelled", value: stats.cancelled, bg: "#FCE8E6", color: c.red },
+          { label: "Total", value: stats.total, bg: "bg-light" },
+          { label: "Pending", value: stats.pending, bg: "bg-warning-subtle" },
+          { label: "Approved", value: stats.approved, bg: "bg-success-subtle" },
+          { label: "Completed", value: stats.completed, bg: "bg-primary-subtle" },
+          { label: "Cancelled", value: stats.cancelled, bg: "bg-danger-subtle" },
         ].map((card) => (
-          <div key={card.label} style={{ background: card.bg, borderRadius: "12px", padding: "16px", border: `1px solid ${c.border}`, cursor: "pointer" }}
-            onClick={() => setSelectedStatus(card.label === "Total" ? "all" : card.label)}>
-            <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", color: card.color, letterSpacing: "0.5px" }}>{card.label}</div>
-            <div style={{ fontSize: "28px", fontWeight: 700, color: card.color, margin: "4px 0" }}>{card.value}</div>
+          <div key={card.label} className="col">
+            <div
+              className={`card shadow-sm h-100 ${card.bg}`}
+              style={{ cursor: "pointer" }}
+              onClick={() => setSelectedStatus(card.label === "Total" ? "all" : card.label)}
+            >
+              <div className="card-body">
+                <div className="text-uppercase small fw-bold text-secondary mb-1">{card.label}</div>
+                <div className="fs-3 fw-bold">{card.value}</div>
+              </div>
+            </div>
           </div>
         ))}
       </div>
 
-      {/* FILTERS */}
-      <div style={{ background: c.card, borderRadius: "12px", padding: "16px 20px", border: `1px solid ${c.border}`, marginBottom: "24px", display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center" }}>
-        <div style={{ position: "relative", minWidth: "240px", flexGrow: 1 }}>
-          <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#9E9A90", fontSize: "14px" }}>🔍</span>
-          <input
-            type="text"
-            placeholder="Search by reservation ID, prosumer NIC, station or slot…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ ...inputStyle, paddingLeft: "34px" }}
-          />
+      {/* Filters */}
+      <div className="card shadow-sm mb-4">
+        <div className="card-body d-flex flex-wrap gap-3 align-items-center">
+          <div className="flex-grow-1" style={{ minWidth: "240px" }}>
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Search by reservation ID, prosumer NIC, station or slot…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <select
+            className="form-select w-auto"
+            value={selectedStatus}
+            onChange={(e) => setSelectedStatus(e.target.value)}
+          >
+            <option value="all">All Statuses</option>
+            <option value="Pending">Pending</option>
+            <option value="Approved">Approved</option>
+            <option value="Completed">Completed</option>
+            <option value="Cancelled">Cancelled</option>
+          </select>
+          {(searchQuery || selectedStatus !== "all") && (
+            <button
+              type="button"
+              className="btn btn-outline-secondary"
+              onClick={() => { setSearchQuery(""); setSelectedStatus("all"); }}
+            >
+              Clear
+            </button>
+          )}
+          <span className="small text-secondary ms-auto">
+            {filtered.length} of {reservations.length} reservations
+          </span>
         </div>
-        <select value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)} style={{ ...inputStyle, width: "auto" }}>
-          <option value="all">All Statuses</option>
-          <option value="Pending">Pending</option>
-          <option value="Approved">Approved</option>
-          <option value="Completed">Completed</option>
-          <option value="Cancelled">Cancelled</option>
-        </select>
-        {(searchQuery || selectedStatus !== "all") && (
-          <button type="button" onClick={() => { setSearchQuery(""); setSelectedStatus("all"); }}
-            style={{ background: "#F0ECE1", border: "none", color: c.textMuted, padding: "9px 14px", borderRadius: "8px", fontSize: "13px", cursor: "pointer" }}>
-            Clear
-          </button>
-        )}
-        <span style={{ fontSize: "12px", color: c.textMuted, marginLeft: "auto" }}>
-          {filtered.length} of {reservations.length} reservations
-        </span>
       </div>
 
-      {/* LOADING */}
+      {/* Loading State */}
       {loading && (
-        <div style={{ background: c.card, borderRadius: "12px", padding: "48px", textAlign: "center", border: `1px solid ${c.border}`, color: c.textMuted }}>
-          <div style={{ fontSize: "28px", marginBottom: "8px" }}>⏳</div>
-          <div style={{ fontSize: "16px", fontWeight: 600 }}>Loading Reservations…</div>
+        <div className="text-center p-5 text-secondary">
+          <div className="spinner-border mb-3" role="status"></div>
+          <div className="fw-semibold">Loading Reservations…</div>
         </div>
       )}
 
-      {/* EMPTY */}
+      {/* Empty State */}
       {!loading && filtered.length === 0 && (
-        <div style={{ background: c.card, borderRadius: "12px", padding: "48px 24px", textAlign: "center", border: `1px solid ${c.border}` }}>
-          <div style={{ fontSize: "36px", marginBottom: "12px" }}>📋</div>
-          <h3 style={{ fontSize: "18px", fontWeight: 700, color: c.textMain, margin: "0 0 6px 0" }}>
+        <div className="card shadow-sm p-5 text-center">
+          <div className="fs-1 mb-3">📋</div>
+          <h4 className="h5 fw-bold mb-2">
             {reservations.length === 0 ? "No reservations yet" : "No reservations match the filter"}
-          </h3>
-          <p style={{ color: c.textMuted, fontSize: "14px", margin: 0 }}>
+          </h4>
+          <p className="text-secondary mb-0">
             {reservations.length === 0
               ? "Prosumers have not made any reservations yet."
               : "Try adjusting your search or filter."}
@@ -198,46 +205,57 @@ function ReservationManagement() {
         </div>
       )}
 
-      {/* TABLE */}
+      {/* Table */}
       {!loading && filtered.length > 0 && (
-        <div style={{ background: c.card, borderRadius: "12px", border: `1px solid ${c.border}`, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px", textAlign: "left" }}>
-              <thead>
-                <tr style={{ background: "#F7F5F1", borderBottom: `1px solid ${c.border}`, color: c.textMuted, fontSize: "11px", textTransform: "uppercase", fontWeight: 700 }}>
-                  {["Reservation ID", "Prosumer NIC", "Station", "Slot", "Status", "Created", "Updated", "Transaction Ref"].map((h) => (
-                    <th key={h} style={{ padding: "13px 14px", whiteSpace: "nowrap" }}>{h}</th>
-                  ))}
+        <div className="card shadow-sm">
+          <div className="table-responsive">
+            <table className="table table-hover align-middle mb-0">
+              <thead className="table-light">
+                <tr className="small text-uppercase text-secondary">
+                  <th className="px-3 py-3">Reservation ID</th>
+                  <th className="px-3 py-3">Prosumer NIC</th>
+                  <th className="px-3 py-3">Station</th>
+                  <th className="px-3 py-3">Slot</th>
+                  <th className="px-3 py-3">Status</th>
+                  <th className="px-3 py-3">Created</th>
+                  <th className="px-3 py-3">Updated</th>
+                  <th className="px-3 py-3">Transaction Ref</th>
+                  <th className="px-3 py-3 text-end">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((r, i) => {
-                  const ss = statusStyle(r.status);
+                {filtered.map((r) => {
+                  const mongoId = r.id || r._id;
                   return (
-                    <tr
-                      key={r.id || r.reservationId || i}
-                      style={{ borderBottom: i === filtered.length - 1 ? "none" : `1px solid #F0ECE1` }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "#FAF8F5")}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
-                    >
-                      <td style={{ padding: "14px" }}>
-                        <span style={{ background: "#EBE8E1", padding: "3px 7px", borderRadius: "5px", fontFamily: "monospace", fontSize: "11px", fontWeight: 700, color: c.primary }}>
+                    <tr key={mongoId || r.reservationId}>
+                      <td className="px-3 py-3">
+                        <span className="badge bg-light text-dark border font-monospace">
                           {r.reservationId}
                         </span>
                       </td>
-                      <td style={{ padding: "14px", fontFamily: "monospace", fontSize: "12px", color: c.textMain }}>{r.prosumerNic}</td>
-                      <td style={{ padding: "14px", fontWeight: 600, color: c.primary }}>{r.stationId}</td>
-                      <td style={{ padding: "14px", fontFamily: "monospace", fontSize: "12px" }}>{r.slotId}</td>
-                      <td style={{ padding: "14px" }}>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "3px 9px", borderRadius: "10px", fontSize: "11px", fontWeight: 700, background: ss.bg, color: ss.color }}>
-                          <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: ss.color }} />
+                      <td className="px-3 py-3 font-monospace small">{r.prosumerNic}</td>
+                      <td className="px-3 py-3 fw-semibold text-primary">{r.stationId}</td>
+                      <td className="px-3 py-3 font-monospace small">{r.slotId}</td>
+                      <td className="px-3 py-3">
+                        <span className={`badge rounded-pill ${statusBadge(r.status)}`}>
                           {r.status}
                         </span>
                       </td>
-                      <td style={{ padding: "14px", fontSize: "11px", color: c.textMuted, whiteSpace: "nowrap" }}>{fmtDate(r.createdAt)}</td>
-                      <td style={{ padding: "14px", fontSize: "11px", color: c.textMuted, whiteSpace: "nowrap" }}>{fmtDate(r.updatedAt)}</td>
-                      <td style={{ padding: "14px", fontSize: "11px", color: c.textMuted, fontFamily: "monospace" }}>
-                        {r.transactionReference || <span style={{ color: "#CCCCCC" }}>—</span>}
+                      <td className="px-3 py-3 small text-secondary">{fmtDate(r.createdAt)}</td>
+                      <td className="px-3 py-3 small text-secondary">{fmtDate(r.updatedAt)}</td>
+                      <td className="px-3 py-3 small font-monospace text-secondary">
+                        {r.transactionReference || "—"}
+                      </td>
+                      <td className="px-3 py-3 text-end">
+                        {r.status === "Pending" && (
+                          <button
+                            className="btn btn-sm btn-success fw-semibold"
+                            onClick={() => handleApprove(mongoId)}
+                            disabled={processingId === mongoId}
+                          >
+                            {processingId === mongoId ? "Approving..." : "Approve"}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

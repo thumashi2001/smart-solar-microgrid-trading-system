@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
 using MicrogridApi.Data;
@@ -7,6 +8,7 @@ namespace MicrogridApi.Controllers;
 
 [ApiController]
 [Route("api/users")]
+[Authorize(Roles = "Backoffice")]
 public class UsersController : ControllerBase
 {
     private readonly MongoDbContext _db;
