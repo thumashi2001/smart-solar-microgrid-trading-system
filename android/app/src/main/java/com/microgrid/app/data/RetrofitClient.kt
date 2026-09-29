@@ -28,7 +28,7 @@ object RetrofitClient {
     }
 
     val instance: ApiService by lazy {
-        val client = ApiClient.sharedOkHttpClient(sessionManager = null)
+        val client = ApiClient.sharedOkHttpClient(sessionManager = ApiClient.sessionManager)
             .newBuilder()
             .addInterceptor(ngrokSkipInterceptor)
             .build()

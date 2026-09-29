@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit
 
 object ApiClient {
 
-    private lateinit var sessionManager: SessionManager
+    lateinit var sessionManager: SessionManager
 
     fun init(sessionManager: SessionManager) {
         this.sessionManager = sessionManager
