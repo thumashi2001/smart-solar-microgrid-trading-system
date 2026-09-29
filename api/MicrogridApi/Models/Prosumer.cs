@@ -1,3 +1,10 @@
+// =============================================================================
+// File: Prosumer.cs
+// Description: MongoDB document model for solar prosumer accounts, stored in
+//              the "prosumers" collection. NIC is the business primary key.
+// Author: Thumashi (Component 1)
+// =============================================================================
+
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 

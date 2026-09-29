@@ -1,3 +1,10 @@
+// =============================================================================
+// File: MongoDbSettings.cs
+// Description: Strongly-typed settings bound from the "MongoDbSettings" section
+//              of appsettings.json (connection string and database name).
+// Author: Thumashi (Component 1)
+// =============================================================================
+
 namespace MicrogridApi.Settings;
 
 public class MongoDbSettings
