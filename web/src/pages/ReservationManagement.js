@@ -123,23 +123,14 @@ function ReservationManagement() {
       {/* KPI Cards */}
       <div className="row g-3 mb-4">
         {[
-          { label: "Total", value: stats.total, bg: "bg-light" },
-          { label: "Pending", value: stats.pending, bg: "bg-warning-subtle" },
-          { label: "Approved", value: stats.approved, bg: "bg-success-subtle" },
-          { label: "Completed", value: stats.completed, bg: "bg-primary-subtle" },
-          { label: "Cancelled", value: stats.cancelled, bg: "bg-danger-subtle" },
+          { label: "Total", value: stats.total, bg: "bg-light", icon: "bi-list-ul" },
+          { label: "Pending", value: stats.pending, bg: "bg-warning-subtle", icon: "bi-hourglass-split" },
+          { label: "Approved", value: stats.approved, bg: "bg-success-subtle", icon: "bi-check-circle" },
+          { label: "Completed", value: stats.completed, bg: "bg-primary-subtle", icon: "bi-flag" },
+          { label: "Cancelled", value: stats.cancelled, bg: "bg-danger-subtle", icon: "bi-x-circle" },
         ].map((card) => (
-          <div key={card.label} className="col">
-            <div
-              className={`card shadow-sm h-100 ${card.bg}`}
-              style={{ cursor: "pointer" }}
-              onClick={() => setSelectedStatus(card.label === "Total" ? "all" : card.label)}
-            >
-              <div className="card-body">
-                <div className="text-uppercase small fw-bold text-secondary mb-1">{card.label}</div>
-                <div className="fs-3 fw-bold">{card.value}</div>
-              </div>
-            </div>
+          <div key={card.label} className="col-12 col-md" onClick={() => setSelectedStatus(card.label === "Total" ? "all" : card.label)} style={{ cursor: "pointer" }}>
+            <SummaryCard icon={card.icon} label={card.label} value={card.value} bg={card.bg} />
           </div>
         ))}
       </div>
@@ -270,3 +261,16 @@ function ReservationManagement() {
 }
 
 export default ReservationManagement;
+
+// One coloured statistic card in the summary row.
+function SummaryCard({ icon, label, value, bg }) {
+  return (
+    <div className={`rounded-3 p-3 d-flex align-items-center gap-3 h-100 ${bg}`}>
+      <i className={`bi ${icon} fs-4`}></i>
+      <div>
+        <div className="fs-4 fw-bold lh-1">{value}</div>
+        <div className="small text-secondary">{label}</div>
+      </div>
+    </div>
+  );
+}

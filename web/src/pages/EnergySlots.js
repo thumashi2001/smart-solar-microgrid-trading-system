@@ -254,19 +254,13 @@ function EnergySlots() {
       {/* KPI Cards */}
       <div className="row g-3 mb-4">
         {[
-          { label: "Total Slots", value: stats.total, sub: "Configured across nodes", bg: "bg-light" },
-          { label: "Available Slots", value: stats.available, sub: "Open for booking", bg: "bg-success-subtle" },
-          { label: "Total Capacity", value: stats.totalCap, sub: "Max booking units", bg: "bg-primary-subtle" },
-          { label: "Remaining Spaces", value: stats.totalAvail, sub: "Current availability", bg: "bg-warning-subtle" },
+          { label: "Total Slots", value: stats.total, sub: "Configured across nodes", bg: "bg-light", icon: "bi-calendar-range" },
+          { label: "Available Slots", value: stats.available, sub: "Open for booking", bg: "bg-success-subtle", icon: "bi-calendar-check" },
+          { label: "Total Capacity", value: stats.totalCap, sub: "Max booking units", bg: "bg-primary-subtle", icon: "bi-battery-charging" },
+          { label: "Remaining Spaces", value: stats.totalAvail, sub: "Current availability", bg: "bg-warning-subtle", icon: "bi-battery-half" },
         ].map((card) => (
           <div key={card.label} className="col-12 col-md-6 col-lg-3">
-            <div className={`card shadow-sm h-100 ${card.bg}`}>
-              <div className="card-body">
-                <div className="text-uppercase small fw-bold text-secondary mb-1">{card.label}</div>
-                <div className="fs-3 fw-bold mb-1">{card.value}</div>
-                <div className="small text-secondary">{card.sub}</div>
-              </div>
-            </div>
+            <SummaryCard icon={card.icon} label={card.label} value={card.value} bg={card.bg} />
           </div>
         ))}
       </div>
@@ -608,3 +602,16 @@ function EnergySlots() {
 }
 
 export default EnergySlots;
+
+// One coloured statistic card in the summary row.
+function SummaryCard({ icon, label, value, bg }) {
+  return (
+    <div className={`rounded-3 p-3 d-flex align-items-center gap-3 h-100 ${bg}`}>
+      <i className={`bi ${icon} fs-4`}></i>
+      <div>
+        <div className="fs-4 fw-bold lh-1">{value}</div>
+        <div className="small text-secondary">{label}</div>
+      </div>
+    </div>
+  );
+}
